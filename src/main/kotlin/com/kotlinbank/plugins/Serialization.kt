@@ -1,15 +1,17 @@
 package com.kotlinbank.plugins
 
-import io.ktor.serialization.gson.*
+import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
 import io.ktor.server.plugins.contentnegotiation.*
+import kotlinx.serialization.json.Json
 
 fun Application.configureSerialization() {
     install(ContentNegotiation) {
-        gson {
-            setPrettyPrinting()
-            setDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ")
-        }
+        json(Json {
+            prettyPrint = true
+            ignoreUnknownKeys = true
+            isLenient = true
+            encodeDefaults = true
+        })
     }
-    println("✅ Serialization configurée")
 }
