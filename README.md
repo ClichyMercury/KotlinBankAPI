@@ -142,8 +142,9 @@ GET  /api/v1/auth/me           🔒
 
 ### Market
 ```
-GET  /api/v1/market/assets               (?type=CRYPTO|STOCK|FOREX)
+GET  /api/v1/market/assets                       (?type=CRYPTO|STOCK|FOREX)
 GET  /api/v1/market/assets/{uuid}
+GET  /api/v1/market/assets/{uuid}/candles        ?days=1|7|30|365   (OHLC, cache Redis)
 ```
 
 ### Portfolio & Orders

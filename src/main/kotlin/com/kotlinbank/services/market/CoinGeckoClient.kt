@@ -42,6 +42,12 @@ object CoinGeckoClient {
         }.body()
     }
 
+    suspend fun fetchOhlc(coinId: String, days: Int): List<List<Double>> =
+        client.get("coins/$coinId/ohlc") {
+            parameter("vs_currency", "usd")
+            parameter("days", days)
+        }.body()
+
     fun close() = client.close()
 }
 

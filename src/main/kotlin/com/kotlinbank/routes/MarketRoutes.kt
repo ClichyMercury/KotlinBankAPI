@@ -34,5 +34,18 @@ fun Route.marketRoutes() {
                 ?: throw NotFoundException("Asset not found")
             call.respond(asset.toResponse())
         }
+
+        get("/assets/{id}/candles") {
+            val id = call.parameters["id"]?.let { raw ->
+                runCatching { UUID.fromString(raw) }.getOrElse {
+                    throw ValidationException("Invalid asset id (must be a UUID)")
+                }
+            } ?: throw ValidationException("Missing asset id")
+
+            val days = call.request.queryParameters["days"]?.toIntOrNull()
+                ?: throw ValidationException("Missing or invalid ?days parameter")
+
+            call.respond(MarketDataService.getCandles(id, days))
+        }
     }
 }
