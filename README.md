@@ -88,6 +88,8 @@ Architecture **layered** simple : `routes/` → `services/` → `db/repositories
 
 ## Démarrage
 
+> Première fois ? Lire **[SETUP.md](SETUP.md)** — guide complet d'installation (JDK, Docker, IntelliJ, psql, workflows dev, troubleshooting).
+
 ### Prérequis
 - Docker Desktop
 - JDK 17
