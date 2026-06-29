@@ -218,6 +218,26 @@
               "path": ["api", "v1", "orders", "buy"]
             }
           }
+        },
+        {
+          "name": "Sell order",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"assetId\": \"{{assetId}}\",\n  \"quantity\": 0.01\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/sell",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "orders", "sell"]
+            }
+          }
         }
       ]
     }

@@ -151,6 +151,7 @@ GET  /api/v1/market/assets/{uuid}/candles        ?days=1|7|30|365   (OHLC, cache
 ```
 GET  /api/v1/portfolio         🔒
 POST /api/v1/orders/buy        🔒  { assetId, quantity }
+POST /api/v1/orders/sell       🔒  { assetId, quantity }   -> renvoie realizedPnl
 GET  /api/v1/orders            🔒
 ```
 
@@ -197,7 +198,7 @@ Migrations dans `src/main/resources/db/migration/`.
 | 1 | **Testcontainers KO** | Docker Desktop 29.4.2 a une régression : son daemon renvoie un body vide + label "redirect" cassé sur `/info`, que Testcontainers 1.19 et 1.20 ne savent pas suivre. Test E2E utilise la DB dev en attendant. Fix attendu : Docker Desktop 30.x ou CI Linux. | Moyenne |
 | 2 | **Asymétrie scale BigDecimal** | Le débit ledger est arrondi à 2 décimales, mais `currentValue` du portfolio garde la précision 8 → micro-écart (~0.0005$ par achat) entre `totalValue` et `balanceFictif + assetsValue` recalculé manuellement. Cosmétique mais visible. | Faible |
 | 3 | **Pas de refresh token JWT** | Token 1h expire et il faut se relogger. OK pour MVP, à ajouter dès qu'on a un client mobile sérieux. | Moyenne |
-| 4 | **Order SELL absent** | Seul BUY implémenté. SELL nécessite gestion du PnL réalisé et update du ledger en sens inverse. | Haute |
+| ~~4~~ | ~~**Order SELL absent**~~ | ✅ Fait : `POST /orders/sell` (transaction unique, PnL réalisé, ledger SELL positif, suppression de la position si soldée). | ~~Haute~~ |
 | 5 | **Pas de tests unitaires** | Seul un test E2E. Les services (`AuthService`, `OrderService`, `PortfolioService`) gagneraient des tests isolés avec mocks. | Moyenne |
 | 6 | **Pas de CI/CD** | `./gradlew test` doit être lancé manuellement. À mettre dans GitHub Actions avec build + test à chaque push. | Moyenne |
 | 7 | **RedisFactory.init() pas idempotent** | Si appelé 2× (cas tests multi-classes plus tard), la première connexion fuit. À ajouter un guard. | Faible |
@@ -212,7 +213,7 @@ Migrations dans `src/main/resources/db/migration/`.
 ## Roadmap
 
 ### 🚧 Sprint 2 (estimation : 1 semaine)
-- [ ] **Order SELL** + recalcul PnL réalisé + ledger entry SELL positif
+- [x] **Order SELL** + recalcul PnL réalisé + ledger entry SELL positif
 - [ ] **Refresh token JWT** + `POST /auth/refresh` + `POST /auth/logout` (invalidate refresh en Redis)
 - [ ] **Email verification** : générer un code, envoyer (mock SMTP au début), endpoint `/auth/verify`
 - [ ] **Reset password** : `POST /auth/forgot` + `/auth/reset`
