@@ -86,15 +86,38 @@ Architecture **layered** simple : `routes/` → `services/` → `db/repositories
 
 ---
 
+## Ajouts post-slice (en cours)
+
+- ✅ **Order SELL** — `POST /api/v1/orders/sell` : vente en transaction unique, **PnL réalisé**
+  (`realizedPnl`), ledger `SELL` positif, suppression de la position si soldée. (PR #1 — clôt la dette #4)
+- ✅ **Candles OHLC** — `GET /api/v1/market/assets/{id}/candles?days=...` avec cache Redis
+- ✅ **Outillage dev** — scripts de lancement `start.sh` / `start.ps1`, collection Postman
+  versionnée (`FinSim.postman_collection.json`), doc d'intégration mobile (`docs/MOBILE_ORDERS.md`)
+
+**Prochaines pistes** (cf. [Roadmap](#roadmap) ci-dessous) : seuil *stale price* sur les ordres
+(dette #8), refresh token JWT (dette #3), tests unitaires services avec MockK (dette #5).
+
+---
+
 ## Démarrage
 
 > Première fois ? Lire **[SETUP.md](SETUP.md)** — guide complet d'installation (JDK, Docker, IntelliJ, psql, workflows dev, troubleshooting).
+>
+> Intégration côté app mobile (ordres BUY/SELL : contrats, erreurs, exemples) → **[docs/MOBILE_ORDERS.md](docs/MOBILE_ORDERS.md)**.
 
 ### Prérequis
 - Docker Desktop
 - JDK 17
 
 ### Lancer la stack
+
+Tout-en-un (Docker + healthcheck + API) :
+```bash
+./start.sh        # macOS / Linux
+.\start.ps1       # Windows (PowerShell)
+```
+
+Ou à la main :
 ```bash
 # 1. Postgres (5434) + Redis (6380)
 docker compose up -d
