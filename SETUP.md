@@ -82,6 +82,18 @@ docker compose ps
 ./gradlew run
 ```
 
+> **Raccourci** : un script de démarrage fait les étapes 2 à 4 d'un coup (pose `JAVA_HOME` en 17, lance Docker, attend que les containers soient healthy, démarre l'API).
+>
+> ```bash
+> ./start.sh        # macOS / Linux  (1re fois : chmod +x start.sh)
+> ```
+> ```powershell
+> .\start.ps1       # Windows (PowerShell)
+> ```
+>
+> `Ctrl+C` pour arrêter. Sous Windows, si « l'exécution de scripts est désactivée » :
+> `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` (une seule fois).
+
 Au premier boot, tu dois voir dans les logs :
 - `HikariPool-1 - Start completed`
 - `Flyway ... Successfully applied 1 migration`
@@ -138,7 +150,10 @@ Si tout passe → environnement OK 🎉
 ### Lancer l'API
 
 ```bash
-./gradlew run                    # foreground, Ctrl+C pour stopper
+./start.sh                       # macOS/Linux : Docker + healthcheck + API (tout-en-un)
+.\start.ps1                      # Windows : idem
+
+./gradlew run                    # ou à la main (Docker doit déjà tourner) — Ctrl+C pour stopper
 ```
 
 ### Lancer les tests
@@ -334,7 +349,10 @@ Free tier CoinGecko : ~10-30 req/min. Notre job tape toutes les 30s sur 1 endpoi
 ## 8. Cheat sheet — commandes les plus utilisées
 
 ```bash
-# Démarrer la stack complète
+# Démarrer la stack complète (tout-en-un)
+./start.sh                       # macOS/Linux   (.\start.ps1 sous Windows)
+
+# ... ou à la main
 docker compose up -d && ./gradlew run
 
 # Run + filter logs sur les events importants
