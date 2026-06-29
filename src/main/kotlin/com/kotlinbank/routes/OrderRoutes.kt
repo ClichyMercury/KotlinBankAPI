@@ -1,6 +1,7 @@
 package com.kotlinbank.routes
 
 import com.kotlinbank.models.dto.BuyOrderRequest
+import com.kotlinbank.models.dto.SellOrderRequest
 import com.kotlinbank.plugins.AUTH_JWT
 import com.kotlinbank.services.OrderService
 import io.ktor.http.*
@@ -21,6 +22,12 @@ fun Route.orderRoutes() {
             post("/buy") {
                 val req = call.receive<BuyOrderRequest>()
                 val order = OrderService.placeBuyOrder(call.userId(), req)
+                call.respond(HttpStatusCode.Created, order)
+            }
+
+            post("/sell") {
+                val req = call.receive<SellOrderRequest>()
+                val order = OrderService.placeSellOrder(call.userId(), req)
                 call.respond(HttpStatusCode.Created, order)
             }
         }

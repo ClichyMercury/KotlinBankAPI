@@ -6,7 +6,9 @@ import com.kotlinbank.models.Portfolio
 import com.kotlinbank.models.PortfolioAsset
 import kotlinx.coroutines.Dispatchers
 import org.jetbrains.exposed.sql.ResultRow
+import org.jetbrains.exposed.sql.Op
 import org.jetbrains.exposed.sql.and
+import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
@@ -80,6 +82,10 @@ object PortfolioRepository {
             it[PortfolioAssetsTable.avgBuyPrice] = avgBuyPrice
             it[PortfolioAssetsTable.updatedAt] = Instant.now()
         }
+    }
+
+    suspend fun removeAsset(id: UUID): Int = newSuspendedTransaction(Dispatchers.IO) {
+        PortfolioAssetsTable.deleteWhere { Op.build { PortfolioAssetsTable.id eq id } }
     }
 
     private fun ResultRow.toPortfolio(): Portfolio = Portfolio(

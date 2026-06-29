@@ -15,6 +15,12 @@ data class BuyOrderRequest(
 )
 
 @Serializable
+data class SellOrderRequest(
+    @Serializable(with = UUIDSerializer::class) val assetId: UUID,
+    @Serializable(with = BigDecimalSerializer::class) val quantity: BigDecimal
+)
+
+@Serializable
 data class OrderResponse(
     @Serializable(with = UUIDSerializer::class) val id: UUID,
     @Serializable(with = UUIDSerializer::class) val assetId: UUID,
@@ -24,10 +30,12 @@ data class OrderResponse(
     @Serializable(with = BigDecimalSerializer::class) val total: BigDecimal,
     val status: OrderStatus,
     @Serializable(with = InstantSerializer::class) val createdAt: Instant,
-    @Serializable(with = InstantSerializer::class) val executedAt: Instant? = null
+    @Serializable(with = InstantSerializer::class) val executedAt: Instant? = null,
+    // Réalisé uniquement sur un SELL (gain/perte vs avg_buy_price), null sinon
+    @Serializable(with = BigDecimalSerializer::class) val realizedPnl: BigDecimal? = null
 )
 
-fun Order.toResponse(): OrderResponse = OrderResponse(
+fun Order.toResponse(realizedPnl: BigDecimal? = null): OrderResponse = OrderResponse(
     id = id,
     assetId = assetId,
     type = type,
@@ -36,5 +44,6 @@ fun Order.toResponse(): OrderResponse = OrderResponse(
     total = quantity.multiply(price),
     status = status,
     createdAt = createdAt,
-    executedAt = executedAt
+    executedAt = executedAt,
+    realizedPnl = realizedPnl
 )

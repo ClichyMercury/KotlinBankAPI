@@ -8,6 +8,7 @@ import com.kotlinbank.models.OrderStatus
 import com.kotlinbank.models.dto.AssetResponse
 import com.kotlinbank.models.dto.AuthResponse
 import com.kotlinbank.models.dto.BuyOrderRequest
+import com.kotlinbank.models.dto.SellOrderRequest
 import com.kotlinbank.models.dto.ErrorResponse
 import com.kotlinbank.models.dto.LoginRequest
 import com.kotlinbank.models.dto.OrderResponse
@@ -131,6 +132,53 @@ class EndToEndFlowTest {
         }.body<List<OrderResponse>>()
         assertTrue(orders.isNotEmpty(), "order history non-empty")
         assertEquals(order.id, orders[0].id, "most recent order matches")
+
+        // --- SELL flow ---
+        // Re-pin BTC higher so the realized PnL is non-zero and deterministic.
+        runBlocking {
+            val btcAsset = AssetRepository.findByTicker("BTC") ?: error("BTC missing")
+            AssetRepository.updateLastPrice(btcAsset.id, BigDecimal("80000"), Instant.now())
+        }
+
+        val sellResp = http.post("/api/v1/orders/sell") {
+            header("Authorization", "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(SellOrderRequest(btc.id, BigDecimal("0.05")))
+        }
+        assertEquals(HttpStatusCode.Created, sellResp.status)
+        val sellOrder = sellResp.body<OrderResponse>()
+        assertEquals(OrderStatus.EXECUTED, sellOrder.status)
+        assertEquals(0, sellOrder.total.compareTo(BigDecimal("4000")), "0.05 BTC × 80000 = 4000")
+        assertNotNull(sellOrder.realizedPnl, "sell exposes realized PnL")
+        assertEquals(0, sellOrder.realizedPnl!!.compareTo(BigDecimal("500")), "(80000-70000)×0.05 = 500")
+
+        val portfolio3 = http.get("/api/v1/portfolio") {
+            header("Authorization", "Bearer $token")
+        }.body<PortfolioResponse>()
+        assertEquals(0, portfolio3.balanceFictif.compareTo(BigDecimal("7000")), "3000 + 4000 proceeds")
+        assertEquals(0, portfolio3.assets[0].quantity.compareTo(BigDecimal("0.05")), "0.1 - 0.05 left")
+
+        // Oversell is rejected
+        val badSell = http.post("/api/v1/orders/sell") {
+            header("Authorization", "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(SellOrderRequest(btc.id, BigDecimal("100")))
+        }
+        assertEquals(HttpStatusCode.BadRequest, badSell.status)
+        assertTrue(badSell.body<ErrorResponse>().message.contains("Insufficient quantity"))
+
+        // Selling the rest removes the position entirely
+        val sellAll = http.post("/api/v1/orders/sell") {
+            header("Authorization", "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(SellOrderRequest(btc.id, BigDecimal("0.05")))
+        }
+        assertEquals(HttpStatusCode.Created, sellAll.status)
+        val portfolio4 = http.get("/api/v1/portfolio") {
+            header("Authorization", "Bearer $token")
+        }.body<PortfolioResponse>()
+        assertEquals(0, portfolio4.balanceFictif.compareTo(BigDecimal("11000")), "7000 + 4000 proceeds")
+        assertTrue(portfolio4.assets.isEmpty(), "position fully closed -> removed")
 
         val badBuy = http.post("/api/v1/orders/buy") {
             header("Authorization", "Bearer $token")
