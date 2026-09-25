@@ -22,8 +22,13 @@ object LogMailSender : MailSender {
 
 object MailService : MailSender {
 
-    var delegate: MailSender = LogMailSender
+    var delegate: MailSender = resolveSender()
 
     override suspend fun sendPasswordReset(email: String, token: String) =
         delegate.sendPasswordReset(email, token)
+
+    fun close() = (delegate as? ResendMailSender)?.close()
 }
+
+private fun resolveSender(): MailSender =
+    if (AppConfig.Mail.provider == "resend") ResendMailSender() else LogMailSender

@@ -33,15 +33,29 @@ object AppConfig {
         val expirationMinutes: Long = env("PASSWORD_RESET_EXPIRATION_MINUTES", "30").toLong()
     }
 
+    object Mail {
+        val provider: String = env("MAIL_PROVIDER", "log")
+        val resendApiKey: String = env("RESEND_API_KEY", "")
+        val from: String = env("MAIL_FROM", "FinSim <onboarding@resend.dev>")
+        val resetUrlTemplate: String = env("PASSWORD_RESET_URL", "https://finsim.app/reset-password?token={token}")
+    }
+
     object Market {
         val coinGeckoApiKey: String? = System.getenv("COINGECKO_API_KEY")
     }
 
     val isProduction: Boolean get() = environment == "production"
 
-    fun validate() = validate(environment, Jwt.secret, Database.password, Database.url)
-
-    fun validate(environment: String, jwtSecret: String, dbPassword: String, dbUrl: String) {
+    fun validate(
+        environment: String = AppConfig.environment,
+        jwtSecret: String = Jwt.secret,
+        dbPassword: String = Database.password,
+        dbUrl: String = Database.url,
+        mailProvider: String = Mail.provider,
+        resendApiKey: String = Mail.resendApiKey,
+        mailFrom: String = Mail.from,
+        resetUrlTemplate: String = Mail.resetUrlTemplate
+    ) {
         if (environment != "production") return
 
         val problems = buildList {
@@ -55,6 +69,19 @@ object AppConfig {
             }
             if (!dbUrl.startsWith("jdbc:postgresql://")) {
                 add("DATABASE_URL must be a JDBC url (jdbc:postgresql://host:port/db), got \"${dbUrl.take(24)}...\"")
+            }
+            if (mailProvider == "log") {
+                add("MAIL_PROVIDER is \"log\": password reset emails would never be delivered, set it to \"resend\"")
+            } else if (mailProvider != "resend") {
+                add("MAIL_PROVIDER must be \"log\" or \"resend\", got \"$mailProvider\"")
+            } else {
+                if (resendApiKey.isBlank()) add("RESEND_API_KEY is required when MAIL_PROVIDER=resend")
+                if (mailFrom.contains("resend.dev")) {
+                    add("MAIL_FROM still uses the resend.dev sandbox domain, which only delivers to your own Resend account")
+                }
+            }
+            if (!resetUrlTemplate.contains("{token}")) {
+                add("PASSWORD_RESET_URL must contain the {token} placeholder")
             }
         }
 

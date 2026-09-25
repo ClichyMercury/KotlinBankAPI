@@ -100,7 +100,9 @@ Architecture **layered** simple : `routes/` → `services/` → `db/repositories
   URL JDBC. Évite de tourner en prod avec le secret de dev publié dans le repo.
 - ✅ **Reset password** — `POST /auth/forgot-password` / `/auth/reset-password` : token opaque hashé,
   usage unique, TTL 30 min, réponse générique (pas d'énumération d'emails), révoque toutes les
-  sessions après changement. Provider mail à brancher (dette #14).
+  sessions après changement.
+- ✅ **Emails via Resend** — `ResendMailSender` (template FR HTML + texte) ; `MAIL_PROVIDER=log`
+  en dev écrit le token dans les logs. Setup DNS/clé : [Configurer Resend](#configurer-resend-emails-de-reset-password).
 - ✅ **Refresh token** — `POST /auth/refresh` / `/auth/logout` / `/auth/logout-all` : tokens opaques
   (32 bytes aléatoires) stockés hashés SHA-256, rotation à usage unique, détection de réutilisation
   qui révoque toutes les sessions. (clôt la dette #3)
@@ -155,10 +157,41 @@ JWT_AUDIENCE=finsim-clients
 JWT_EXPIRATION_MINUTES=60
 JWT_REFRESH_EXPIRATION_DAYS=30
 PASSWORD_RESET_EXPIRATION_MINUTES=30
+MAIL_PROVIDER=log                    # log (dev) | resend (obligatoire en prod)
+RESEND_API_KEY=                      # re_... si MAIL_PROVIDER=resend
+MAIL_FROM=FinSim <no-reply@tondomaine.com>
+PASSWORD_RESET_URL=https://finsim.app/reset-password?token={token}
 COINGECKO_API_KEY=                   # optionnel
 ```
 
 Voir `.env.example`.
+
+### Configurer Resend (emails de reset password)
+
+Nécessaire uniquement pour la prod — en dev, `MAIL_PROVIDER=log` écrit le token dans les logs.
+
+1. Créer un compte sur [resend.com](https://resend.com) (gratuit : 3 000 emails/mois, 100/jour)
+2. **Domains → Add Domain**, saisir le domaine d'envoi (ex. `finsim.app`)
+3. Ajouter chez le registrar les enregistrements DNS affichés (MX + TXT SPF, TXT DKIM).
+   La vérification prend de quelques minutes à quelques heures.
+4. **API Keys → Create API Key** (permission *Sending access*), copier la clé `re_...`
+5. Renseigner les variables :
+
+```bash
+MAIL_PROVIDER=resend
+RESEND_API_KEY=re_...
+MAIL_FROM=FinSim <no-reply@finsim.app>      # doit être sur le domaine vérifié
+PASSWORD_RESET_URL=https://finsim.app/reset-password?token={token}
+```
+
+`PASSWORD_RESET_URL` est le lien cliqué dans l'email : soit une page web qui appelle
+`POST /auth/reset-password`, soit un deep link mobile (`finsim://reset?token={token}`).
+Le placeholder `{token}` est obligatoire.
+
+> Tant que le domaine n'est pas vérifié, Resend n'accepte que l'expéditeur bac à sable
+> `onboarding@resend.dev`, qui ne délivre qu'à l'adresse du compte Resend. La validation de
+> config refuse ce cas en production, justement pour ne pas déployer un reset qui n'arrive
+> à personne.
 
 ### Note ports (macOS)
 
@@ -188,8 +221,8 @@ et en émet un nouveau. Rejouer un token déjà consommé = fuite présumée →
 sessions de l'utilisateur sont révoquées (401 `Refresh token reuse detected`).
 
 Le reset password consomme un token à usage unique valable 30 min, puis **révoque toutes les
-sessions** de l'utilisateur. ⚠️ Aucun provider mail n'est branché : en dev le token est écrit
-dans les logs, en prod il n'est pas délivré (dette #14).
+sessions** de l'utilisateur. L'email part via **Resend** quand `MAIL_PROVIDER=resend` ; en dev
+(`MAIL_PROVIDER=log`, défaut) le token est simplement écrit dans les logs de l'API.
 
 ### Market
 ```
@@ -264,7 +297,8 @@ Migrations dans `src/main/resources/db/migration/`.
 | 11 | **Pas de monitoring** | Aucun endpoint `/metrics`, pas de Sentry/Bugsnag pour les erreurs. À ajouter avant la prod. | Haute (pour prod) |
 | 12 | **Secret JWT en env var simple** | Suffit en dev/Railway, mais à passer dans un secret manager dédié quand on grossit. | Moyenne |
 | 13 | **Purge des refresh + reset tokens au boot uniquement** | Les tokens expirés sont supprimés au démarrage de l'API. Sur une instance qui tourne des mois, la table grossit entre deux redémarrages. À passer en job périodique si le volume devient visible. | Faible |
-| 14 | **Aucun provider mail branché** | `MailSender` n'a qu'une implémentation `LogMailSender` : en dev le token de reset est loggé, en prod il n'est **pas délivré** (warning au log). Le reset password est donc inutilisable par un vrai utilisateur tant qu'un provider (Resend, SendGrid, Mailjet…) n'est pas implémenté. Une classe à écrire, le reste du flow est en place. | **Haute (pour prod)** |
+| ~~14~~ | ~~**Aucun provider mail branché**~~ | ✅ Fait : `ResendMailSender` (API HTTP Resend, template FR HTML + texte). `MAIL_PROVIDER=log` reste le défaut en dev. La prod refuse de démarrer si le provider n'est pas `resend`, si la clé manque, ou si `MAIL_FROM` utilise encore le domaine bac à sable `resend.dev`. | ~~Haute~~ |
+| 15 | **Pas de retry sur l'envoi d'email** | Si Resend renvoie une erreur (domaine non vérifié, quota, panne), l'erreur est loggée et l'utilisateur ne reçoit rien — sans le savoir, puisque la réponse HTTP reste générique pour éviter l'énumération de comptes. Acceptable au démarrage, à doubler d'une file de retry + alerte quand le volume grimpe. | Moyenne |
 
 ---
 
@@ -346,7 +380,8 @@ src/main/kotlin/com/kotlinbank/
 │   ├── OrderService.kt
 │   ├── Exceptions.kt
 │   ├── mail/
-│   │   └── MailSender.kt       interface + LogMailSender (pas de SMTP)
+│   │   ├── MailSender.kt       interface + LogMailSender (dev)
+│   │   └── ResendMailSender.kt API Resend (prod)
 │   └── market/
 │       ├── CoinGeckoClient.kt
 │       ├── MarketDataService.kt

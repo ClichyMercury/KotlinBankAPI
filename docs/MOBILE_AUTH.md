@@ -118,10 +118,24 @@ Réponse **toujours** identique, que l'email existe ou non (pas d'énumération 
 Le token de reset est opaque, à **usage unique**, valable **30 min**
 (`PASSWORD_RESET_EXPIRATION_MINUTES`). Demander un nouveau lien invalide le précédent.
 
-> ⚠️ **Aucun provider mail n'est branché pour l'instant.** En dev, le token est écrit dans les
-> logs de l'API (`Password reset token for <email>: <token>`). En prod, il n'est pas délivré :
-> l'écran « mot de passe oublié » ne sera réellement utilisable qu'une fois un provider
-> implémenté côté back.
+L'email part via Resend en production. En dev (`MAIL_PROVIDER=log`), rien n'est envoyé : le
+token est écrit dans les logs de l'API (`Password reset token for <email>: <token>`) — c'est
+comme ça qu'on teste le flow en local.
+
+### Le lien reçu par l'utilisateur
+
+Le back construit le lien à partir de `PASSWORD_RESET_URL`, qui contient le placeholder
+`{token}`. Deux montages possibles :
+
+| Montage | `PASSWORD_RESET_URL` | Ce qui se passe au clic |
+|---|---|---|
+| Deep link | `finsim://reset?token={token}` | l'app s'ouvre sur l'écran « nouveau mot de passe » |
+| Page web | `https://finsim.app/reset-password?token={token}` | une page web appelle l'API, marche même sans l'app installée |
+
+En deep link pur, un utilisateur qui ouvre l'email depuis un appareil sans l'app tombe sur un
+lien mort — prévoir une page web de repli (universal link / App Link) si c'est un cas réel.
+
+Dans les deux cas, l'écran final envoie `token` + `newPassword` à `/auth/reset-password`.
 
 ### `POST /api/v1/auth/reset-password` → 200
 
