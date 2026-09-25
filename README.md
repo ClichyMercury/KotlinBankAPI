@@ -161,10 +161,17 @@ MAIL_PROVIDER=log                    # log (dev) | resend (obligatoire en prod)
 RESEND_API_KEY=                      # re_... si MAIL_PROVIDER=resend
 MAIL_FROM=FinSim <no-reply@tondomaine.com>
 PASSWORD_RESET_URL=https://finsim.app/reset-password?token={token}
+CORS_ALLOWED_HOSTS=                  # prod : hosts web autorisés, séparés par des virgules
 COINGECKO_API_KEY=                   # optionnel
 ```
 
 Voir `.env.example`.
+
+**`CORS_ALLOWED_HOSTS`** ne sert qu'aux navigateurs : un client mobile natif n'envoie pas
+d'en-tête `Origin`, donc laisser la variable vide est le bon réglage tant qu'il n'y a pas de
+front web. Format : hosts nus séparés par des virgules (`finsim.wharpe.com,app.wharpe.com`),
+sans schéma ni slash final — la validation de prod refuse le boot sinon. En dev, toutes les
+origines sont acceptées.
 
 ### Configurer Resend (emails de reset password)
 
@@ -192,6 +199,39 @@ Le placeholder `{token}` est obligatoire.
 > `onboarding@resend.dev`, qui ne délivre qu'à l'adresse du compte Resend. La validation de
 > config refuse ce cas en production, justement pour ne pas déployer un reset qui n'arrive
 > à personne.
+
+### Déployer
+
+L'image est construite par le `Dockerfile` à la racine (multi-stage, JRE 17, `EXPOSE 8080`).
+Au boot, l'API valide sa config (voir plus bas), Flyway applique les migrations, le seeder
+insère les assets manquants et le job de prix démarre.
+
+Variables minimales en production :
+
+```bash
+ENVIRONMENT=production
+JWT_SECRET=<32+ caractères aléatoires>
+DATABASE_URL=jdbc:postgresql://<host>:5432/finsim
+DATABASE_USER=finsim
+DATABASE_PASSWORD=<mot de passe réel>
+REDIS_URL=redis://<host>:6379
+MAIL_PROVIDER=resend
+RESEND_API_KEY=re_...
+MAIL_FROM=FinSim <no-reply@tondomaine.com>
+PASSWORD_RESET_URL=https://tondomaine.com/reset-password?token={token}
+CORS_ALLOWED_HOSTS=                  # vide tant qu'il n'y a pas de front web
+```
+
+L'API **refuse de démarrer** si l'une de ces valeurs est absente ou incohérente, et liste tous
+les problèmes d'un coup. C'est volontaire : mieux vaut un déploiement qui échoue bruyamment
+qu'une API en ligne avec le secret de dev ou un reset password qui n'arrive à personne.
+
+⚠️ **Une seule instance.** `PriceRefreshJob` tourne dans chaque process : deux replicas doublent
+les appels CoinGecko et déclenchent des 429.
+
+⚠️ **`DATABASE_URL` doit être une URL JDBC.** Les PaaS fournissent en général
+`postgres://user:pass@host/db` — à convertir en `jdbc:postgresql://host:5432/db` avec
+`DATABASE_USER` / `DATABASE_PASSWORD` séparés.
 
 ### Note ports (macOS)
 
