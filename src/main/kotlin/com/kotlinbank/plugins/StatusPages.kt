@@ -44,6 +44,22 @@ fun Application.configureStatusPages() {
         exception<JsonConvertException> { call, cause ->
             call.respond(HttpStatusCode.BadRequest, ErrorResponse("invalid_json", cause.message ?: "Malformed JSON"))
         }
+        status(HttpStatusCode.TooManyRequests) { call, _ ->
+            val retryAfter = call.response.headers[HttpHeaders.RetryAfter]
+            val suffix = retryAfter?.let { " Retry in $it seconds." } ?: ""
+            call.respond(
+                HttpStatusCode.TooManyRequests,
+                ErrorResponse("rate_limited", "Too many requests.$suffix")
+            )
+        }
+
+        status(HttpStatusCode.Forbidden) { call, _ ->
+            call.respond(
+                HttpStatusCode.Forbidden,
+                ErrorResponse("forbidden", "Origin not allowed")
+            )
+        }
+
         exception<Throwable> { call, cause ->
             statusPagesLog.error("Unhandled exception", cause)
             SentryReporter.captureException(cause, call.errorContext())

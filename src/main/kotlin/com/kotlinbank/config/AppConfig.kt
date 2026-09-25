@@ -39,8 +39,15 @@ object AppConfig {
         val tracesSampleRate: Double = env("SENTRY_TRACES_SAMPLE_RATE", "0.0").toDouble()
     }
 
+    object Proxy {
+        val trustForwardedHeaders: Boolean =
+            env("TRUST_PROXY_HEADERS", if (environment == "production") "true" else "false").toBoolean()
+    }
+
     object Cors {
-        val allowedHosts: List<String> = parseHosts(env("CORS_ALLOWED_HOSTS", ""))
+        val allowedHosts: List<String> by lazy {
+            (parseHosts(env("CORS_ALLOWED_HOSTS", "")) + listOfNotNull(hostOf(Mail.resetUrlTemplate))).distinct()
+        }
     }
 
     object Mail {
@@ -55,6 +62,10 @@ object AppConfig {
     }
 
     val isProduction: Boolean get() = environment == "production"
+
+    fun hostOf(url: String): String? = runCatching {
+        java.net.URI(url.substringBefore('?')).takeIf { it.scheme == "https" }?.host
+    }.getOrNull()
 
     fun parseHosts(raw: String): List<String> =
         raw.split(",").map { it.trim() }.filter { it.isNotEmpty() }

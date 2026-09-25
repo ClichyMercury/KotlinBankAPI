@@ -45,6 +45,7 @@ dependencies {
     implementation("io.ktor:ktor-server-status-pages-jvm:$ktor_version")
     implementation("io.ktor:ktor-server-call-logging-jvm:$ktor_version")
     implementation("io.ktor:ktor-server-rate-limit-jvm:$ktor_version")
+    implementation("io.ktor:ktor-server-forwarded-header-jvm:$ktor_version")
 
     // Ktor client (pour appeler CoinGecko en J4)
     implementation("io.ktor:ktor-client-core-jvm:$ktor_version")

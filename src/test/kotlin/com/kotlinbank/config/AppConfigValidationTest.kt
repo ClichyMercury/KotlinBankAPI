@@ -147,6 +147,14 @@ class AppConfigValidationTest {
     }
 
     @Test
+    fun `the host serving the reset page is derived from its url`() {
+        assertEquals("api-finsim.wharpe.com", AppConfig.hostOf("https://api-finsim.wharpe.com/reset-password?token={token}"))
+        assertEquals(null, AppConfig.hostOf("finsim://reset?token={token}"))
+        assertEquals(null, AppConfig.hostOf("http://insecure.example/reset"))
+        assertEquals(null, AppConfig.hostOf("pas une url"))
+    }
+
+    @Test
     fun `production reports every problem at once`() {
         val error = assertThrows<IllegalStateException> {
             validateProduction(

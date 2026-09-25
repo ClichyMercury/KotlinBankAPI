@@ -167,6 +167,7 @@ RESEND_API_KEY=                      # re_... si MAIL_PROVIDER=resend
 MAIL_FROM=FinSim <no-reply@tondomaine.com>
 PASSWORD_RESET_URL=https://api.tondomaine.com/reset-password?token={token}
 CORS_ALLOWED_HOSTS=                  # prod : hosts web autorisés, séparés par des virgules
+TRUST_PROXY_HEADERS=                 # défaut : true en production, false ailleurs
 SENTRY_DSN=                          # vide = reporting désactivé (warning au boot en prod)
 SENTRY_RELEASE=                      # optionnel, ex. le SHA du commit déployé
 SENTRY_TRACES_SAMPLE_RATE=0.0        # 0.0 = pas de tracing, seulement les erreurs
@@ -175,11 +176,21 @@ COINGECKO_API_KEY=                   # optionnel
 
 Voir `.env.example`.
 
+**`TRUST_PROXY_HEADERS`** doit rester à `true` derrière un reverse proxy (Traefik, nginx, Dokploy,
+Railway…). Sans ça l'API croit que toutes les requêtes arrivent en `http` depuis l'IP du proxy,
+ce qui a deux conséquences graves : CORS rejette en 403 les requêtes de nos propres pages, et le
+rate limit compte **tous les utilisateurs comme un seul client**. À l'inverse, si l'API est un
+jour exposée directement à Internet, mettre `false` — sinon n'importe qui peut usurper son IP
+via `X-Forwarded-For` et contourner le rate limit.
+
 **`CORS_ALLOWED_HOSTS`** ne sert qu'aux navigateurs : un client mobile natif n'envoie pas
 d'en-tête `Origin`, donc laisser la variable vide est le bon réglage tant qu'il n'y a pas de
 front web. Format : hosts nus séparés par des virgules (`finsim.wharpe.com,app.wharpe.com`),
 sans schéma ni slash final — la validation de prod refuse le boot sinon. En dev, toutes les
 origines sont acceptées.
+
+Le host de `PASSWORD_RESET_URL` est **ajouté automatiquement** à la liste : la page de reset que
+l'API sert elle-même ne doit jamais être bloquée par nos propres règles CORS.
 
 ### Configurer Resend (emails de reset password)
 
@@ -384,6 +395,7 @@ Migrations dans `src/main/resources/db/migration/`.
 | 12 | **Secret JWT en env var simple** | Suffit en dev/Railway, mais à passer dans un secret manager dédié quand on grossit. | Moyenne |
 | 13 | **Purge des refresh + reset tokens au boot uniquement** | Les tokens expirés sont supprimés au démarrage de l'API. Sur une instance qui tourne des mois, la table grossit entre deux redémarrages. À passer en job périodique si le volume devient visible. | Faible |
 | ~~14~~ | ~~**Aucun provider mail branché**~~ | ✅ Fait : `ResendMailSender` (API HTTP Resend, template FR HTML + texte). `MAIL_PROVIDER=log` reste le défaut en dev. La prod refuse de démarrer si le provider n'est pas `resend`, si la clé manque, ou si `MAIL_FROM` utilise encore le domaine bac à sable `resend.dev`. | ~~Haute~~ |
+| 16 | **Rate limit à 10 req/min sur tout `/auth`** | Le quota couvre register, login, refresh, forgot et reset ensemble. Maintenant qu'il est bien par IP, 10/min reste serré pour un utilisateur qui se trompe de mot de passe puis demande un reset. À relever ou à découper par endpoint. | Moyenne |
 | 15 | **Pas de retry sur l'envoi d'email** | Si Resend renvoie une erreur (domaine non vérifié, quota, panne), l'erreur est loggée et l'utilisateur ne reçoit rien — sans le savoir, puisque la réponse HTTP reste générique pour éviter l'énumération de comptes. Acceptable au démarrage, à doubler d'une file de retry + alerte quand le volume grimpe. | Moyenne |
 
 ---
