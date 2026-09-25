@@ -264,6 +264,16 @@ les appels CoinGecko et déclenchent des 429.
 
 ### Monitoring (Sentry)
 
+`GET /health` expose l'état du reporting à côté de `db` et `redis` :
+
+```json
+{ "status": "ok", "db": true, "redis": true, "sentry": true }
+```
+
+`sentry: false` signifie qu'aucun DSN n'est configuré. Ce champ **n'entre pas** dans le calcul
+de `status` : perdre l'observabilité ne doit pas faire passer l'instance en `degraded` et
+déclencher un redémarrage par l'orchestrateur.
+
 `SENTRY_DSN` vide = tout est no-op, rien n'est envoyé. En production, l'absence de DSN produit
 un warning au boot mais ne bloque pas le démarrage — contrairement aux erreurs de config
 sensibles, une panne d'observabilité ne justifie pas de refuser de servir.

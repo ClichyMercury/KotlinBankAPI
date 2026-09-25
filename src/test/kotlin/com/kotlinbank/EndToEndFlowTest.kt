@@ -11,6 +11,7 @@ import com.kotlinbank.models.dto.BuyOrderRequest
 import com.kotlinbank.models.dto.SellOrderRequest
 import com.kotlinbank.models.dto.ErrorResponse
 import com.kotlinbank.models.dto.ForgotPasswordRequest
+import com.kotlinbank.models.dto.HealthResponse
 import com.kotlinbank.models.dto.MessageResponse
 import com.kotlinbank.models.dto.LoginRequest
 import com.kotlinbank.models.dto.OrderResponse
@@ -347,5 +348,22 @@ class EndToEndFlowTest {
             staleRefresh.status,
             "sessions opened before the reset are revoked"
         )
+    }
+
+    @Test
+    fun `health reports every dependency including monitoring`() = testApplication {
+        application { module() }
+        val http = createClient {
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+
+        val response = http.get("/health")
+        assertEquals(HttpStatusCode.OK, response.status)
+
+        val health = response.body<HealthResponse>()
+        assertEquals("ok", health.status)
+        assertTrue(health.db, "db must be reachable")
+        assertTrue(health.redis, "redis must be reachable")
+        assertTrue(!health.sentry, "no DSN is configured in tests, so monitoring reports itself off")
     }
 }
