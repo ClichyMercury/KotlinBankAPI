@@ -1,6 +1,7 @@
 package com.kotlinbank.config
 
 import org.junit.jupiter.api.Assertions.assertDoesNotThrow
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -18,7 +19,8 @@ class AppConfigValidationTest {
         mailProvider: String = "resend",
         resendApiKey: String = "re_live_key",
         mailFrom: String = "FinSim <no-reply@finsim.app>",
-        resetUrlTemplate: String = resetUrl
+        resetUrlTemplate: String = resetUrl,
+        corsAllowedHosts: List<String> = listOf("finsim.wharpe.com")
     ) = AppConfig.validate(
         environment = "production",
         jwtSecret = jwtSecret,
@@ -27,7 +29,8 @@ class AppConfigValidationTest {
         mailProvider = mailProvider,
         resendApiKey = resendApiKey,
         mailFrom = mailFrom,
-        resetUrlTemplate = resetUrlTemplate
+        resetUrlTemplate = resetUrlTemplate,
+        corsAllowedHosts = corsAllowedHosts
     )
 
     @Test
@@ -41,7 +44,8 @@ class AppConfigValidationTest {
                 mailProvider = "log",
                 resendApiKey = "",
                 mailFrom = "FinSim <onboarding@resend.dev>",
-                resetUrlTemplate = resetUrl
+                resetUrlTemplate = resetUrl,
+                corsAllowedHosts = emptyList()
             )
         }
     }
@@ -109,6 +113,37 @@ class AppConfigValidationTest {
             validateProduction(resetUrlTemplate = "https://finsim.app/reset-password")
         }
         assertTrue(error.message!!.contains("{token} placeholder"))
+    }
+
+    @Test
+    fun `production accepts an empty cors list for a mobile only client`() {
+        assertDoesNotThrow { validateProduction(corsAllowedHosts = emptyList()) }
+    }
+
+    @Test
+    fun `production refuses a cors host carrying a scheme`() {
+        val error = assertThrows<IllegalStateException> {
+            validateProduction(corsAllowedHosts = listOf("https://finsim.wharpe.com"))
+        }
+        assertTrue(error.message!!.contains("without a scheme"))
+        assertTrue(error.message!!.contains("finsim.wharpe.com"))
+    }
+
+    @Test
+    fun `production refuses a cors host with a trailing slash`() {
+        val error = assertThrows<IllegalStateException> {
+            validateProduction(corsAllowedHosts = listOf("finsim.wharpe.com/"))
+        }
+        assertTrue(error.message!!.contains("trailing slash"))
+    }
+
+    @Test
+    fun `cors hosts are parsed from a comma separated list`() {
+        assertEquals(
+            listOf("finsim.wharpe.com", "api-finsim.wharpe.com"),
+            AppConfig.parseHosts(" finsim.wharpe.com , api-finsim.wharpe.com ,, ")
+        )
+        assertTrue(AppConfig.parseHosts("").isEmpty())
     }
 
     @Test

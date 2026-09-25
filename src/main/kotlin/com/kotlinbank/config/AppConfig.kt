@@ -33,6 +33,10 @@ object AppConfig {
         val expirationMinutes: Long = env("PASSWORD_RESET_EXPIRATION_MINUTES", "30").toLong()
     }
 
+    object Cors {
+        val allowedHosts: List<String> = parseHosts(env("CORS_ALLOWED_HOSTS", ""))
+    }
+
     object Mail {
         val provider: String = env("MAIL_PROVIDER", "log")
         val resendApiKey: String = env("RESEND_API_KEY", "")
@@ -46,6 +50,9 @@ object AppConfig {
 
     val isProduction: Boolean get() = environment == "production"
 
+    fun parseHosts(raw: String): List<String> =
+        raw.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+
     fun validate(
         environment: String = AppConfig.environment,
         jwtSecret: String = Jwt.secret,
@@ -54,7 +61,8 @@ object AppConfig {
         mailProvider: String = Mail.provider,
         resendApiKey: String = Mail.resendApiKey,
         mailFrom: String = Mail.from,
-        resetUrlTemplate: String = Mail.resetUrlTemplate
+        resetUrlTemplate: String = Mail.resetUrlTemplate,
+        corsAllowedHosts: List<String> = Cors.allowedHosts
     ) {
         if (environment != "production") return
 
@@ -82,6 +90,12 @@ object AppConfig {
             }
             if (!resetUrlTemplate.contains("{token}")) {
                 add("PASSWORD_RESET_URL must contain the {token} placeholder")
+            }
+            corsAllowedHosts.filter { it.contains("://") }.forEach {
+                add("CORS_ALLOWED_HOSTS takes hosts without a scheme, got \"$it\" (use \"${it.substringAfter("://")}\")")
+            }
+            corsAllowedHosts.filter { it.endsWith("/") }.forEach {
+                add("CORS_ALLOWED_HOSTS takes hosts without a trailing slash, got \"$it\"")
             }
         }
 
