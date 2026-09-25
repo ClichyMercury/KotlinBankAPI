@@ -95,6 +95,12 @@ Architecture **layered** simple : `routes/` → `services/` → `db/repositories
   versionnée (`FinSim.postman_collection.json`), docs d'intégration mobile (`docs/MOBILE_ORDERS.md`,
   `docs/MOBILE_AUTH.md`)
 
+- ✅ **Fail-fast config prod** — l'API refuse de démarrer en `ENVIRONMENT=production` si `JWT_SECRET`
+  est absent/trop court, si `DATABASE_PASSWORD` est celui de dev, ou si `DATABASE_URL` n'est pas une
+  URL JDBC. Évite de tourner en prod avec le secret de dev publié dans le repo.
+- ✅ **Reset password** — `POST /auth/forgot-password` / `/auth/reset-password` : token opaque hashé,
+  usage unique, TTL 30 min, réponse générique (pas d'énumération d'emails), révoque toutes les
+  sessions après changement. Provider mail à brancher (dette #14).
 - ✅ **Refresh token** — `POST /auth/refresh` / `/auth/logout` / `/auth/logout-all` : tokens opaques
   (32 bytes aléatoires) stockés hashés SHA-256, rotation à usage unique, détection de réutilisation
   qui révoque toutes les sessions. (clôt la dette #3)
@@ -148,6 +154,7 @@ JWT_ISSUER=finsim-api
 JWT_AUDIENCE=finsim-clients
 JWT_EXPIRATION_MINUTES=60
 JWT_REFRESH_EXPIRATION_DAYS=30
+PASSWORD_RESET_EXPIRATION_MINUTES=30
 COINGECKO_API_KEY=                   # optionnel
 ```
 
@@ -168,6 +175,8 @@ Tous préfixés `/api/v1`. 🔒 = `Authorization: Bearer <token>`.
 POST /api/v1/auth/register     { email, pseudo, password }
 POST /api/v1/auth/login        { email, password }
 POST /api/v1/auth/refresh      { refreshToken }          -> nouvelle paire (rotation)
+POST /api/v1/auth/forgot-password  { email }            -> 200 générique (pas d'énumération)
+POST /api/v1/auth/reset-password   { token, newPassword }
 POST /api/v1/auth/logout       { refreshToken }          -> révoque ce refresh token
 GET  /api/v1/auth/me           🔒
 POST /api/v1/auth/logout-all   🔒                        -> révoque toutes les sessions
@@ -177,6 +186,10 @@ POST /api/v1/auth/logout-all   🔒                        -> révoque toutes le
 (opaque, 30j). Le refresh token est **à usage unique** : chaque appel à `/refresh` le révoque
 et en émet un nouveau. Rejouer un token déjà consommé = fuite présumée → **toutes** les
 sessions de l'utilisateur sont révoquées (401 `Refresh token reuse detected`).
+
+Le reset password consomme un token à usage unique valable 30 min, puis **révoque toutes les
+sessions** de l'utilisateur. ⚠️ Aucun provider mail n'est branché : en dev le token est écrit
+dans les logs, en prod il n'est pas délivré (dette #14).
 
 ### Market
 ```
@@ -213,6 +226,9 @@ ledger          id, user_id→, type DEPOSIT|BUY|SELL|FEE, amount (signé), orde
                   INDEX(user_id, created_at DESC)  -- audit/append-only
 refresh_tokens  id, user_id→, token_hash CHAR(64) UNIQUE (SHA-256), expires_at, revoked_at, created_at
                   INDEX(user_id), INDEX(expires_at)  -- valeur brute jamais stockée
+password_reset_tokens
+                id, user_id→, token_hash CHAR(64) UNIQUE (SHA-256), expires_at, used_at, created_at
+                  INDEX(user_id), INDEX(expires_at)  -- usage unique, TTL 30 min
 ```
 
 Migrations dans `src/main/resources/db/migration/`.
@@ -238,9 +254,8 @@ Migrations dans `src/main/resources/db/migration/`.
 | 1 | **Testcontainers KO** | Docker Desktop 29.4.2 a une régression : son daemon renvoie un body vide + label "redirect" cassé sur `/info`, que Testcontainers 1.19 et 1.20 ne savent pas suivre. Test E2E utilise la DB dev en attendant. Fix attendu : Docker Desktop 30.x ou CI Linux. | Moyenne |
 | 2 | **Asymétrie scale BigDecimal** | Le débit ledger est arrondi à 2 décimales, mais `currentValue` du portfolio garde la précision 8 → micro-écart (~0.0005$ par achat) entre `totalValue` et `balanceFictif + assetsValue` recalculé manuellement. Cosmétique mais visible. | Faible |
 | ~~3~~ | ~~**Pas de refresh token JWT**~~ | ✅ Fait : `POST /auth/refresh` (rotation + détection de réutilisation), `/auth/logout`, `/auth/logout-all`. Stockage en Postgres (table `refresh_tokens`, hash SHA-256) et **pas en Redis** comme prévu initialement : une session ne doit pas disparaître au redémarrage de Redis, et la révocation gagne à être auditable. Tradeoff assumé : un aller-retour DB par refresh (rare, non critique). | ~~Moyenne~~ |
-| 13 | **Purge des refresh tokens au boot uniquement** | Les tokens expirés sont supprimés au démarrage de l'API. Sur une instance qui tourne des mois, la table grossit entre deux redémarrages. À passer en job périodique si le volume devient visible. | Faible |
 | ~~4~~ | ~~**Order SELL absent**~~ | ✅ Fait : `POST /orders/sell` (transaction unique, PnL réalisé, ledger SELL positif, suppression de la position si soldée). | ~~Haute~~ |
-| 5 | **Pas de tests unitaires** | Seul un test E2E. Les services (`AuthService`, `OrderService`, `PortfolioService`) gagneraient des tests isolés avec mocks. | Moyenne |
+| 5 | **Peu de tests unitaires** | 1 test unitaire (`AppConfigValidationTest`) + 3 tests E2E. Les services (`AuthService`, `OrderService`, `PortfolioService`) gagneraient des tests isolés avec mocks. | Moyenne |
 | 6 | **Pas de CI/CD** | `./gradlew test` doit être lancé manuellement. À mettre dans GitHub Actions avec build + test à chaque push. | Moyenne |
 | 7 | **RedisFactory.init() pas idempotent** | Si appelé 2× (cas tests multi-classes plus tard), la première connexion fuit. À ajouter un guard. | Faible |
 | 8 | **Pas de gestion d'erreur CoinGecko persistante** | Si l'API CoinGecko tombe 30 min, `last_price` devient stale mais l'API continue à servir l'ancien prix sans warning. Ajouter un seuil "stale price" qui rejette les BUY. | Moyenne |
@@ -248,6 +263,8 @@ Migrations dans `src/main/resources/db/migration/`.
 | 10 | **Logs en plain text** | `logback.xml` fait du `🏦 HH:mm:ss [thread] LEVEL ...` lisible mais pas indexable. À passer en JSON quand on aura un agrégateur (Loki, Datadog…). | Faible |
 | 11 | **Pas de monitoring** | Aucun endpoint `/metrics`, pas de Sentry/Bugsnag pour les erreurs. À ajouter avant la prod. | Haute (pour prod) |
 | 12 | **Secret JWT en env var simple** | Suffit en dev/Railway, mais à passer dans un secret manager dédié quand on grossit. | Moyenne |
+| 13 | **Purge des refresh + reset tokens au boot uniquement** | Les tokens expirés sont supprimés au démarrage de l'API. Sur une instance qui tourne des mois, la table grossit entre deux redémarrages. À passer en job périodique si le volume devient visible. | Faible |
+| 14 | **Aucun provider mail branché** | `MailSender` n'a qu'une implémentation `LogMailSender` : en dev le token de reset est loggé, en prod il n'est **pas délivré** (warning au log). Le reset password est donc inutilisable par un vrai utilisateur tant qu'un provider (Resend, SendGrid, Mailjet…) n'est pas implémenté. Une classe à écrire, le reste du flow est en place. | **Haute (pour prod)** |
 
 ---
 
@@ -258,7 +275,8 @@ Migrations dans `src/main/resources/db/migration/`.
 - [x] **Refresh token JWT** + `POST /auth/refresh` + `POST /auth/logout` + `/auth/logout-all`
       (tokens opaques hashés en Postgres, rotation à usage unique, détection de réutilisation)
 - [ ] **Email verification** : générer un code, envoyer (mock SMTP au début), endpoint `/auth/verify`
-- [ ] **Reset password** : `POST /auth/forgot` + `/auth/reset`
+- [x] **Reset password** : `POST /auth/forgot-password` + `/auth/reset-password`
+      (token usage unique 30 min, révoque toutes les sessions — reste à brancher un provider mail, dette #14)
 - [ ] **Tests unitaires** services (AuthService, OrderService, PortfolioService) avec MockK
 - [ ] **Seuil "stale price"** : rejeter un BUY si `last_price_updated_at` > 5 min
 
@@ -322,20 +340,23 @@ src/main/kotlin/com/kotlinbank/
 │   ├── AuthService.kt
 │   ├── JwtService.kt
 │   ├── RefreshTokenService.kt
+│   ├── PasswordResetService.kt
 │   ├── PasswordHasher.kt
 │   ├── PortfolioService.kt
 │   ├── OrderService.kt
 │   ├── Exceptions.kt
+│   ├── mail/
+│   │   └── MailSender.kt       interface + LogMailSender (pas de SMTP)
 │   └── market/
 │       ├── CoinGeckoClient.kt
 │       ├── MarketDataService.kt
 │       └── PriceRefreshJob.kt
 ├── db/
 │   ├── AssetSeeder.kt
-│   ├── tables/                 7 Exposed Tables DSL
-│   └── repositories/           6 repos avec newSuspendedTransaction
+│   ├── tables/                 8 Exposed Tables DSL
+│   └── repositories/           7 repos avec newSuspendedTransaction
 └── models/
-    ├── User / Asset / Portfolio / Order / LedgerEntry / RefreshToken
+    ├── User / Asset / Portfolio / Order / LedgerEntry / RefreshToken / PasswordResetToken
     └── dto/
         ├── Serializers.kt      UUID, Instant, BigDecimal
         ├── AuthDto.kt

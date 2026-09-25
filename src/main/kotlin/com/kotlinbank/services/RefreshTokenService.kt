@@ -2,7 +2,6 @@ package com.kotlinbank.services
 
 import com.kotlinbank.config.AppConfig
 import com.kotlinbank.db.repositories.RefreshTokenRepository
-import com.kotlinbank.models.RefreshToken
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.time.Instant
@@ -42,11 +41,10 @@ object RefreshTokenService {
 
     suspend fun revoke(rawToken: String) {
         if (rawToken.isBlank()) throw ValidationException("Refresh token is required")
-        val stored: RefreshToken = RefreshTokenRepository.findByHash(hash(rawToken)) ?: return
-        RefreshTokenRepository.revoke(stored.id)
+        RefreshTokenRepository.deleteByHash(hash(rawToken))
     }
 
-    suspend fun revokeAllForUser(userId: UUID): Int = RefreshTokenRepository.revokeAllForUser(userId)
+    suspend fun revokeAllForUser(userId: UUID): Int = RefreshTokenRepository.deleteAllForUser(userId)
 
     private fun generateRawToken(): String {
         val bytes = ByteArray(TOKEN_BYTES).also(random::nextBytes)

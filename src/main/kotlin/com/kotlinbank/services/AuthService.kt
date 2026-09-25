@@ -6,9 +6,11 @@ import com.kotlinbank.db.repositories.UserRepository
 import com.kotlinbank.models.LedgerType
 import com.kotlinbank.models.User
 import com.kotlinbank.models.dto.AuthResponse
+import com.kotlinbank.models.dto.ForgotPasswordRequest
 import com.kotlinbank.models.dto.LoginRequest
 import com.kotlinbank.models.dto.RefreshRequest
 import com.kotlinbank.models.dto.RegisterRequest
+import com.kotlinbank.models.dto.ResetPasswordRequest
 import com.kotlinbank.models.dto.TokenResponse
 import com.kotlinbank.models.dto.UserResponse
 import kotlinx.coroutines.Dispatchers
@@ -87,6 +89,18 @@ object AuthService {
         RefreshTokenService.revokeAllForUser(userId)
     }
 
+    suspend fun forgotPassword(req: ForgotPasswordRequest) {
+        if (req.email.isBlank()) throw ValidationException("Email is required")
+        PasswordResetService.request(req.email.trim().lowercase())
+    }
+
+    suspend fun resetPassword(req: ResetPasswordRequest) {
+        validatePassword(req.newPassword)
+        val userId = PasswordResetService.consume(req.token)
+        UserRepository.updatePasswordHash(userId, PasswordHasher.hash(req.newPassword))
+        RefreshTokenService.revokeAllForUser(userId)
+    }
+
     suspend fun me(userId: UUID): UserResponse {
         val user = UserRepository.findById(userId)
             ?: throw NotFoundException("User not found")
@@ -112,7 +126,11 @@ object AuthService {
         if (!pseudoRegex.matches(req.pseudo)) {
             throw ValidationException("Pseudo must be 3-50 chars, alphanumeric or underscore")
         }
-        if (req.password.length < 8) {
+        validatePassword(req.password)
+    }
+
+    private fun validatePassword(password: String) {
+        if (password.length < 8) {
             throw ValidationException("Password must be at least 8 characters")
         }
     }

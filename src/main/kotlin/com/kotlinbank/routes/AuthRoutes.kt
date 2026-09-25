@@ -1,9 +1,11 @@
 package com.kotlinbank.routes
 
+import com.kotlinbank.models.dto.ForgotPasswordRequest
 import com.kotlinbank.models.dto.LoginRequest
 import com.kotlinbank.models.dto.MessageResponse
 import com.kotlinbank.models.dto.RefreshRequest
 import com.kotlinbank.models.dto.RegisterRequest
+import com.kotlinbank.models.dto.ResetPasswordRequest
 import com.kotlinbank.plugins.AUTH_JWT
 import com.kotlinbank.plugins.RATE_LIMIT_AUTH
 import com.kotlinbank.services.AuthService
@@ -37,6 +39,21 @@ fun Route.authRoutes() {
             post("/refresh") {
                 val req = call.receive<RefreshRequest>()
                 call.respond(HttpStatusCode.OK, AuthService.refresh(req))
+            }
+
+            post("/forgot-password") {
+                val req = call.receive<ForgotPasswordRequest>()
+                AuthService.forgotPassword(req)
+                call.respond(
+                    HttpStatusCode.OK,
+                    MessageResponse("If that email is registered, a reset link has been sent")
+                )
+            }
+
+            post("/reset-password") {
+                val req = call.receive<ResetPasswordRequest>()
+                AuthService.resetPassword(req)
+                call.respond(HttpStatusCode.OK, MessageResponse("Password updated, all sessions revoked"))
             }
 
             post("/logout") {
