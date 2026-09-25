@@ -6,5 +6,6 @@ import kotlinx.serialization.Serializable
 data class HealthResponse(
     val status: String,
     val db: Boolean,
-    val redis: Boolean
+    val redis: Boolean,
+    val sentry: Boolean
 )

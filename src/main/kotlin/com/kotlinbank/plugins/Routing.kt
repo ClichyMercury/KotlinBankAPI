@@ -7,6 +7,7 @@ import com.kotlinbank.routes.marketRoutes
 import com.kotlinbank.routes.orderRoutes
 import com.kotlinbank.routes.portfolioRoutes
 import com.kotlinbank.routes.webRoutes
+import com.kotlinbank.services.monitoring.SentryReporter
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.response.*
@@ -35,7 +36,8 @@ fun Application.configureRouting() {
                 HealthResponse(
                     status = if (healthy) "ok" else "degraded",
                     db = dbOk,
-                    redis = redisOk
+                    redis = redisOk,
+                    sentry = SentryReporter.isEnabled
                 )
             )
         }

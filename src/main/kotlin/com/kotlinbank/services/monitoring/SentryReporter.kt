@@ -30,6 +30,8 @@ object SentryReporter {
         log.info("Sentry enabled for environment ${AppConfig.environment}")
     }
 
+    val isEnabled: Boolean get() = Sentry.isEnabled()
+
     fun close() {
         if (Sentry.isEnabled()) Sentry.close()
     }
