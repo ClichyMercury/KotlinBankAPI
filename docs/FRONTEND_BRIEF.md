@@ -320,20 +320,47 @@ lis-le depuis `location.search`.
 
 ---
 
-## 7. Choix technique
+## 7. Stack : Kobweb
 
-Aucune contrainte imposée par l'API : c'est du REST + JSON, tout stack fait l'affaire.
+Le front est construit avec **[Kobweb](https://kobweb.varabyte.com/)** (Compose HTML sur
+Kotlin/JS), pour rester sur un seul langage du back au front.
 
-Deux orientations qui ont du sens ici :
+### IDE : IntelliJ IDEA
 
-- **Statique (Vite + React/Vue/Svelte)** — le plus simple à déployer, un conteneur nginx qui
-  sert des fichiers. Suffisant tant qu'il n'y a pas de SEO à travailler.
-- **SSR (Next.js, Nuxt, SvelteKit)** — utile si les pages marché doivent être indexées par
-  Google. Plus lourd à déployer.
+La documentation Kobweb n'impose pas d'IDE. **IntelliJ IDEA (Community suffit)** est le bon
+choix ici : un projet Kobweb est un projet Gradle Kotlin/JS **sans module Android**. Android
+Studio l'ouvrira et le compilera — c'est IntelliJ avec l'outillage Android greffé — mais tu
+traîneras une interface pensée pour Android sans rien en tirer, sur une base IntelliJ souvent
+en retard d'une version.
 
-Pour un MVP qui double une app mobile, **le statique suffit**.
+Garde Android Studio pour l'app mobile, IntelliJ pour l'API et le front web.
 
----
+### Prérequis
+
+- **JDK 11+** (tu as déjà 17, celui qui compile l'API)
+- **Kobweb CLI** : `brew install varabyte/tap/kobweb` sur macOS
+
+### Démarrer
+
+```bash
+kobweb create app          # projet à partir d'un template
+cd <projet>/site
+kobweb run                 # serveur de dev avec rechargement à chaud
+```
+
+### Deux détails structurants
+
+**Le layout statique suffit.** `kobweb export --layout static` produit un site purement
+frontend dans `.kobweb/site`, servable par n'importe quel hébergeur statique. Le layout
+`fullstack` n'a d'intérêt que pour du code serveur côté Kobweb — tu as déjà ton API Ktor, tu
+n'en as pas besoin.
+
+**L'export lance un Chromium headless.** Kobweb utilise Playwright pour prendre un instantané
+HTML de chaque `@Page`, ce qui donne des pages SEO-friendly. C'est ce qui complique le build
+en conteneur — voir §8.
+
+Comme le site est statique, les appels à l'API partent **du navigateur**. Le CORS du §1a est
+donc bien indispensable.
 
 ## 8. Déployer sur `finsim.wharpe.com` avec Dokploy
 
@@ -343,24 +370,58 @@ Dans l'ordre. Les étapes 1 et 2 sont celles du §1, à faire une seule fois.
 
 **2. CORS** — `CORS_ALLOWED_HOSTS=finsim.wharpe.com` sur l'application API, puis redéployer (§1a).
 
-**3. Dockerfile** dans le dépôt du front. Pour un build statique :
+**3. Choisir comment le site est construit.** C'est là que le Chromium de l'export pèse.
+
+### Option A — export local, conteneur nginx (recommandé pour la première mise en ligne)
+
+Tu exportes sur ta machine, où Chromium s'installe sans friction, et Dokploy ne fait que servir
+des fichiers.
+
+```bash
+kobweb export --layout static
+# produit .kobweb/site
+```
+
+Tu versionnes le dossier exporté (ou tu le pousses sur une branche dédiée), et le `Dockerfile`
+se contente de le copier :
 
 ```dockerfile
-FROM node:22-alpine AS build
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci
-COPY . .
-RUN npm run build
-
 FROM nginx:alpine
-COPY --from=build /app/dist /usr/share/nginx/html
+COPY .kobweb/site /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
 ```
 
-Avec un `nginx.conf` qui renvoie `index.html` sur les routes inconnues, sinon un rechargement
-sur une route profonde donne un 404 :
+Avantage : build Dokploy en quelques secondes, aucune surprise. Inconvénient : des fichiers
+générés dans le dépôt, et un export manuel à chaque déploiement.
+
+### Option B — tout dans le Dockerfile
+
+Même workflow que l'API : Dokploy construit depuis le dépôt. Il faut alors un Chromium et le
+CLI Kobweb dans l'étape de build, et pointer Kobweb dessus pour lui éviter de télécharger le
+sien :
+
+```dockerfile
+FROM eclipse-temurin:17-jdk AS build
+RUN apt-get update && apt-get install -y --no-install-recommends chromium zip unzip curl \
+ && rm -rf /var/lib/apt/lists/*
+ENV KOBWEB_EXPORT_BROWSER_PATH=/usr/bin/chromium
+# installer le CLI Kobweb (SDKMAN ou release GitHub), puis :
+# RUN kobweb export --layout static --notty
+WORKDIR /app
+COPY . .
+
+FROM nginx:alpine
+COPY --from=build /app/site/.kobweb/site /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+```
+
+> Ce Dockerfile est un point de départ, pas une recette validée : je ne l'ai pas construit ici.
+> La ligne d'installation du CLI et le chemin exact de sortie sont à ajuster au premier build.
+> Si tu t'enlises, reviens à l'option A et automatise plus tard.
+
+### `nginx.conf` — dans les deux cas
 
 ```nginx
 server {
@@ -370,27 +431,24 @@ server {
 }
 ```
 
+Sans le `try_files`, un rechargement sur une route profonde renvoie un 404.
+
 **4. Application Dokploy** — même projet que l'API :
 Create Service → Application → source GitHub, dépôt du front, branche `main`,
 Build Type **Dockerfile**.
 
-**5. Variables d'environnement** — le front a besoin de l'adresse de l'API. Avec Vite :
-
-```
-VITE_API_BASE_URL=https://api-finsim.wharpe.com
-```
-
-⚠️ Une variable de front est **compilée dans le bundle** et donc publique. N'y mets jamais de
-secret : l'URL de l'API, oui ; une clé d'API, jamais.
-
-**6. Domaine** — onglet Domains → Add Domain :
+**5. Domaine** — onglet Domains → Add Domain :
 
 | Champ | Valeur |
 |---|---|
 | Host | `finsim.wharpe.com` |
 | Path | `/` |
-| Container Port | `80` (nginx) — `3000` si tu pars sur du SSR Node |
+| Container Port | `80` |
 | HTTPS | activé (Let's Encrypt) |
+
+**6. L'adresse de l'API.** Un site statique n'a pas de variables d'environnement à l'exécution :
+l'URL de l'API est **compilée dans le bundle**. Mets-la dans une constante Kotlin, ou passe-la
+au build. N'y mets jamais de secret, tout ce qui est compilé est public.
 
 **7. Deploy**, puis vérifier :
 
@@ -407,6 +465,7 @@ curl -s https://api-finsim.wharpe.com/health
 | Le domaine ne répond pas | enregistrement A absent (§1b) — le wildcard ne couvre pas ce nom |
 | Certificat non généré | le DNS ne pointait pas encore sur le serveur au moment du déploiement |
 | `404` en rechargeant une route profonde | `try_files` manquant dans `nginx.conf` |
+| Le build Dokploy échoue sur l'export | Chromium absent de l'image — voir option B, ou basculer sur l'option A |
 | Montants faux de quelques centimes | des `BigDecimal` parsés en `Number` — voir §2 |
 
 ---
@@ -418,3 +477,4 @@ curl -s https://api-finsim.wharpe.com/health
 - Contrat détaillé ordres : [`MOBILE_ORDERS.md`](MOBILE_ORDERS.md)
 - Collection Postman : `FinSim.postman_collection.json` à la racine du dépôt API
 - Dette technique et roadmap : `README.md` du dépôt API
+- Documentation Kobweb : <https://kobweb.varabyte.com/docs>
