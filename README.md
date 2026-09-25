@@ -123,6 +123,9 @@ Architecture **layered** simple : `routes/` → `services/` → `db/repositories
 >
 > Intégration côté app mobile : auth & refresh token → **[docs/MOBILE_AUTH.md](docs/MOBILE_AUTH.md)**,
 > ordres BUY/SELL → **[docs/MOBILE_ORDERS.md](docs/MOBILE_ORDERS.md)**.
+>
+> Construire le front web → **[docs/FRONTEND_BRIEF.md](docs/FRONTEND_BRIEF.md)** (contrat d'API,
+> palette, déploiement Dokploy sur `finsim.wharpe.com`).
 
 ### Prérequis
 - Docker Desktop
