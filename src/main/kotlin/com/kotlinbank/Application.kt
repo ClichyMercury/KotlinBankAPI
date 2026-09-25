@@ -19,6 +19,7 @@ import com.kotlinbank.services.market.CoinGeckoClient
 import com.kotlinbank.services.market.PriceRefreshJob
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
+import io.ktor.server.plugins.forwardedheaders.*
 import io.ktor.server.netty.*
 import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
@@ -65,6 +66,10 @@ fun main() {
 }
 
 fun Application.module() {
+    if (AppConfig.Proxy.trustForwardedHeaders) {
+        install(XForwardedHeaders)
+        log.info("Trusting X-Forwarded-* headers: the API is expected to sit behind a reverse proxy")
+    }
     configureCallLogging()
     configureSerialization()
     configureCORS()
