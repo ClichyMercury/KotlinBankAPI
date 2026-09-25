@@ -5,15 +5,24 @@ import com.kotlinbank.services.ConflictException
 import com.kotlinbank.services.NotFoundException
 import com.kotlinbank.services.UnauthorizedException
 import com.kotlinbank.services.ValidationException
+import com.kotlinbank.services.monitoring.SentryReporter
 import io.ktor.http.*
 import io.ktor.serialization.*
 import io.ktor.server.application.*
 import io.ktor.server.plugins.*
 import io.ktor.server.plugins.statuspages.*
+import io.ktor.server.auth.*
+import io.ktor.server.auth.jwt.*
 import io.ktor.server.response.*
 import org.slf4j.LoggerFactory
 
 private val statusPagesLog = LoggerFactory.getLogger("StatusPages")
+
+private fun ApplicationCall.errorContext(): Map<String, String> = SentryReporter.requestContext(
+    method = request.local.method.value,
+    uri = request.local.uri,
+    userId = principal<JWTPrincipal>()?.payload?.getClaim("userId")?.asString()
+)
 
 fun Application.configureStatusPages() {
     install(StatusPages) {
@@ -37,6 +46,7 @@ fun Application.configureStatusPages() {
         }
         exception<Throwable> { call, cause ->
             statusPagesLog.error("Unhandled exception", cause)
+            SentryReporter.captureException(cause, call.errorContext())
             call.respond(HttpStatusCode.InternalServerError, ErrorResponse("internal_error", "Something went wrong"))
         }
     }

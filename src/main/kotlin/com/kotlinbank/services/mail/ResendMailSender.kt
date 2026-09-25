@@ -1,6 +1,8 @@
 package com.kotlinbank.services.mail
 
 import com.kotlinbank.config.AppConfig
+import com.kotlinbank.services.monitoring.SentryReporter
+import io.sentry.SentryLevel
 import io.ktor.client.*
 import io.ktor.client.engine.*
 import io.ktor.client.engine.cio.*
@@ -50,11 +52,22 @@ class ResendMailSender(
             }
         }.getOrElse {
             log.error("Resend call failed for $email: ${it.message}")
+            SentryReporter.captureException(it, mapOf("mail.kind" to "password_reset", "mail.provider" to "resend"))
             return
         }
 
         if (!response.status.isSuccess()) {
-            log.error("Resend rejected the password reset for $email: ${response.status} ${response.bodyAsText()}")
+            val body = response.bodyAsText()
+            log.error("Resend rejected the password reset for $email: ${response.status} $body")
+            SentryReporter.captureMessage(
+                "Resend rejected a password reset email: ${response.status}",
+                SentryLevel.ERROR,
+                mapOf(
+                    "mail.kind" to "password_reset",
+                    "mail.provider" to "resend",
+                    "mail.status" to response.status.value.toString()
+                )
+            )
         }
     }
 

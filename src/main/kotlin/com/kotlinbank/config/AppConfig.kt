@@ -33,6 +33,12 @@ object AppConfig {
         val expirationMinutes: Long = env("PASSWORD_RESET_EXPIRATION_MINUTES", "30").toLong()
     }
 
+    object Monitoring {
+        val sentryDsn: String = env("SENTRY_DSN", "")
+        val release: String = env("SENTRY_RELEASE", "")
+        val tracesSampleRate: Double = env("SENTRY_TRACES_SAMPLE_RATE", "0.0").toDouble()
+    }
+
     object Cors {
         val allowedHosts: List<String> = parseHosts(env("CORS_ALLOWED_HOSTS", ""))
     }
