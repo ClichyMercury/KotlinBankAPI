@@ -1,6 +1,8 @@
 package com.kotlinbank.routes
 
 import com.kotlinbank.models.dto.LoginRequest
+import com.kotlinbank.models.dto.MessageResponse
+import com.kotlinbank.models.dto.RefreshRequest
 import com.kotlinbank.models.dto.RegisterRequest
 import com.kotlinbank.plugins.AUTH_JWT
 import com.kotlinbank.plugins.RATE_LIMIT_AUTH
@@ -31,12 +33,28 @@ fun Route.authRoutes() {
                 val response = AuthService.login(req)
                 call.respond(HttpStatusCode.OK, response)
             }
+
+            post("/refresh") {
+                val req = call.receive<RefreshRequest>()
+                call.respond(HttpStatusCode.OK, AuthService.refresh(req))
+            }
+
+            post("/logout") {
+                val req = call.receive<RefreshRequest>()
+                AuthService.logout(req)
+                call.respond(HttpStatusCode.OK, MessageResponse("Logged out"))
+            }
         }
 
         authenticate(AUTH_JWT) {
             get("/me") {
                 val userId = call.userId()
                 call.respond(AuthService.me(userId))
+            }
+
+            post("/logout-all") {
+                AuthService.logoutAll(call.userId())
+                call.respond(HttpStatusCode.OK, MessageResponse("All sessions revoked"))
             }
         }
     }

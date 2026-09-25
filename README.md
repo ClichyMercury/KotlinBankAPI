@@ -92,10 +92,15 @@ Architecture **layered** simple : `routes/` → `services/` → `db/repositories
   (`realizedPnl`), ledger `SELL` positif, suppression de la position si soldée. (PR #1 — clôt la dette #4)
 - ✅ **Candles OHLC** — `GET /api/v1/market/assets/{id}/candles?days=...` avec cache Redis
 - ✅ **Outillage dev** — scripts de lancement `start.sh` / `start.ps1`, collection Postman
-  versionnée (`FinSim.postman_collection.json`), doc d'intégration mobile (`docs/MOBILE_ORDERS.md`)
+  versionnée (`FinSim.postman_collection.json`), docs d'intégration mobile (`docs/MOBILE_ORDERS.md`,
+  `docs/MOBILE_AUTH.md`)
+
+- ✅ **Refresh token** — `POST /auth/refresh` / `/auth/logout` / `/auth/logout-all` : tokens opaques
+  (32 bytes aléatoires) stockés hashés SHA-256, rotation à usage unique, détection de réutilisation
+  qui révoque toutes les sessions. (clôt la dette #3)
 
 **Prochaines pistes** (cf. [Roadmap](#roadmap) ci-dessous) : seuil *stale price* sur les ordres
-(dette #8), refresh token JWT (dette #3), tests unitaires services avec MockK (dette #5).
+(dette #8), tests unitaires services avec MockK (dette #5).
 
 ---
 
@@ -103,7 +108,8 @@ Architecture **layered** simple : `routes/` → `services/` → `db/repositories
 
 > Première fois ? Lire **[SETUP.md](SETUP.md)** — guide complet d'installation (JDK, Docker, IntelliJ, psql, workflows dev, troubleshooting).
 >
-> Intégration côté app mobile (ordres BUY/SELL : contrats, erreurs, exemples) → **[docs/MOBILE_ORDERS.md](docs/MOBILE_ORDERS.md)**.
+> Intégration côté app mobile : auth & refresh token → **[docs/MOBILE_AUTH.md](docs/MOBILE_AUTH.md)**,
+> ordres BUY/SELL → **[docs/MOBILE_ORDERS.md](docs/MOBILE_ORDERS.md)**.
 
 ### Prérequis
 - Docker Desktop
@@ -141,6 +147,7 @@ JWT_SECRET=...                       # OBLIGATOIRE en prod
 JWT_ISSUER=finsim-api
 JWT_AUDIENCE=finsim-clients
 JWT_EXPIRATION_MINUTES=60
+JWT_REFRESH_EXPIRATION_DAYS=30
 COINGECKO_API_KEY=                   # optionnel
 ```
 
@@ -160,8 +167,16 @@ Tous préfixés `/api/v1`. 🔒 = `Authorization: Bearer <token>`.
 ```
 POST /api/v1/auth/register     { email, pseudo, password }
 POST /api/v1/auth/login        { email, password }
+POST /api/v1/auth/refresh      { refreshToken }          -> nouvelle paire (rotation)
+POST /api/v1/auth/logout       { refreshToken }          -> révoque ce refresh token
 GET  /api/v1/auth/me           🔒
+POST /api/v1/auth/logout-all   🔒                        -> révoque toutes les sessions
 ```
+
+`register` / `login` / `refresh` renvoient `accessToken` (JWT 1h) **et** `refreshToken`
+(opaque, 30j). Le refresh token est **à usage unique** : chaque appel à `/refresh` le révoque
+et en émet un nouveau. Rejouer un token déjà consommé = fuite présumée → **toutes** les
+sessions de l'utilisateur sont révoquées (401 `Refresh token reuse detected`).
 
 ### Market
 ```
@@ -196,6 +211,8 @@ portfolio_assets id, portfolio_id→, asset_id→, quantity, avg_buy_price, UNIQ
 orders          id, user_id→, asset_id→, type, quantity, price, status, created_at, executed_at
 ledger          id, user_id→, type DEPOSIT|BUY|SELL|FEE, amount (signé), order_id, balance_after, created_at
                   INDEX(user_id, created_at DESC)  -- audit/append-only
+refresh_tokens  id, user_id→, token_hash CHAR(64) UNIQUE (SHA-256), expires_at, revoked_at, created_at
+                  INDEX(user_id), INDEX(expires_at)  -- valeur brute jamais stockée
 ```
 
 Migrations dans `src/main/resources/db/migration/`.
@@ -220,7 +237,8 @@ Migrations dans `src/main/resources/db/migration/`.
 |---|---|---|---|
 | 1 | **Testcontainers KO** | Docker Desktop 29.4.2 a une régression : son daemon renvoie un body vide + label "redirect" cassé sur `/info`, que Testcontainers 1.19 et 1.20 ne savent pas suivre. Test E2E utilise la DB dev en attendant. Fix attendu : Docker Desktop 30.x ou CI Linux. | Moyenne |
 | 2 | **Asymétrie scale BigDecimal** | Le débit ledger est arrondi à 2 décimales, mais `currentValue` du portfolio garde la précision 8 → micro-écart (~0.0005$ par achat) entre `totalValue` et `balanceFictif + assetsValue` recalculé manuellement. Cosmétique mais visible. | Faible |
-| 3 | **Pas de refresh token JWT** | Token 1h expire et il faut se relogger. OK pour MVP, à ajouter dès qu'on a un client mobile sérieux. | Moyenne |
+| ~~3~~ | ~~**Pas de refresh token JWT**~~ | ✅ Fait : `POST /auth/refresh` (rotation + détection de réutilisation), `/auth/logout`, `/auth/logout-all`. Stockage en Postgres (table `refresh_tokens`, hash SHA-256) et **pas en Redis** comme prévu initialement : une session ne doit pas disparaître au redémarrage de Redis, et la révocation gagne à être auditable. Tradeoff assumé : un aller-retour DB par refresh (rare, non critique). | ~~Moyenne~~ |
+| 13 | **Purge des refresh tokens au boot uniquement** | Les tokens expirés sont supprimés au démarrage de l'API. Sur une instance qui tourne des mois, la table grossit entre deux redémarrages. À passer en job périodique si le volume devient visible. | Faible |
 | ~~4~~ | ~~**Order SELL absent**~~ | ✅ Fait : `POST /orders/sell` (transaction unique, PnL réalisé, ledger SELL positif, suppression de la position si soldée). | ~~Haute~~ |
 | 5 | **Pas de tests unitaires** | Seul un test E2E. Les services (`AuthService`, `OrderService`, `PortfolioService`) gagneraient des tests isolés avec mocks. | Moyenne |
 | 6 | **Pas de CI/CD** | `./gradlew test` doit être lancé manuellement. À mettre dans GitHub Actions avec build + test à chaque push. | Moyenne |
@@ -237,7 +255,8 @@ Migrations dans `src/main/resources/db/migration/`.
 
 ### 🚧 Sprint 2 (estimation : 1 semaine)
 - [x] **Order SELL** + recalcul PnL réalisé + ledger entry SELL positif
-- [ ] **Refresh token JWT** + `POST /auth/refresh` + `POST /auth/logout` (invalidate refresh en Redis)
+- [x] **Refresh token JWT** + `POST /auth/refresh` + `POST /auth/logout` + `/auth/logout-all`
+      (tokens opaques hashés en Postgres, rotation à usage unique, détection de réutilisation)
 - [ ] **Email verification** : générer un code, envoyer (mock SMTP au début), endpoint `/auth/verify`
 - [ ] **Reset password** : `POST /auth/forgot` + `/auth/reset`
 - [ ] **Tests unitaires** services (AuthService, OrderService, PortfolioService) avec MockK
@@ -302,6 +321,7 @@ src/main/kotlin/com/kotlinbank/
 ├── services/
 │   ├── AuthService.kt
 │   ├── JwtService.kt
+│   ├── RefreshTokenService.kt
 │   ├── PasswordHasher.kt
 │   ├── PortfolioService.kt
 │   ├── OrderService.kt
@@ -312,10 +332,10 @@ src/main/kotlin/com/kotlinbank/
 │       └── PriceRefreshJob.kt
 ├── db/
 │   ├── AssetSeeder.kt
-│   ├── tables/                 6 Exposed Tables DSL
-│   └── repositories/           5 repos avec newSuspendedTransaction
+│   ├── tables/                 7 Exposed Tables DSL
+│   └── repositories/           6 repos avec newSuspendedTransaction
 └── models/
-    ├── User / Asset / Portfolio / Order / LedgerEntry
+    ├── User / Asset / Portfolio / Order / LedgerEntry / RefreshToken
     └── dto/
         ├── Serializers.kt      UUID, Instant, BigDecimal
         ├── AuthDto.kt

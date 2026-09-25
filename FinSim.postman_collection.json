@@ -5,9 +5,26 @@
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "baseUrl", "value": "http://localhost:8080", "type": "string" },
-    { "key": "accessToken", "value": "", "type": "string" },
-    { "key": "assetId", "value": "", "type": "string" }
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "assetId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refreshToken",
+      "value": "",
+      "type": "string"
+    }
   ],
   "item": [
     {
@@ -18,7 +35,15 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/", "host": ["{{baseUrl}}"], "path": [""] }
+            "url": {
+              "raw": "{{baseUrl}}/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                ""
+              ]
+            }
           }
         },
         {
@@ -26,7 +51,15 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] }
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            }
           }
         }
       ]
@@ -45,7 +78,10 @@
                   "const json = pm.response.json();",
                   "if (json.accessToken) {",
                   "  pm.collectionVariables.set('accessToken', json.accessToken);",
-                  "  console.log('accessToken sauvegardé');",
+                  "}",
+                  "if (json.refreshToken) {",
+                  "  pm.collectionVariables.set('refreshToken', json.refreshToken);",
+                  "  console.log('accessToken + refreshToken sauvegardés');",
                   "}"
                 ]
               }
@@ -53,15 +89,27 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"toi@test.io\",\n  \"pseudo\": \"toi\",\n  \"password\": \"motdepasse123\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/auth/register",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "auth", "register"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "register"
+              ]
             }
           }
         },
@@ -76,7 +124,10 @@
                   "const json = pm.response.json();",
                   "if (json.accessToken) {",
                   "  pm.collectionVariables.set('accessToken', json.accessToken);",
-                  "  console.log('accessToken sauvegardé');",
+                  "}",
+                  "if (json.refreshToken) {",
+                  "  pm.collectionVariables.set('refreshToken', json.refreshToken);",
+                  "  console.log('accessToken + refreshToken sauvegardés');",
                   "}"
                 ]
               }
@@ -84,15 +135,130 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"toi@test.io\",\n  \"password\": \"motdepasse123\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/auth/login",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "auth", "login"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Refresh",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.accessToken) {",
+                  "  pm.collectionVariables.set('accessToken', json.accessToken);",
+                  "}",
+                  "if (json.refreshToken) {",
+                  "  pm.collectionVariables.set('refreshToken', json.refreshToken);",
+                  "  console.log('accessToken + refreshToken sauvegardés');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "refresh"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "logout"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Logout all",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/logout-all",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "logout-all"
+              ]
             }
           }
         },
@@ -103,12 +269,25 @@
             "header": [],
             "auth": {
               "type": "bearer",
-              "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/auth/me",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "auth", "me"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "me"
+              ]
             }
           }
         }
@@ -124,10 +303,21 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/market/assets?type=CRYPTO",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "market", "assets"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "market",
+                "assets"
+              ],
               "query": [
-                { "key": "type", "value": "CRYPTO", "description": "STOCK | FOREX | CRYPTO (optionnel)" }
+                {
+                  "key": "type",
+                  "value": "CRYPTO",
+                  "description": "STOCK | FOREX | CRYPTO (optionnel)"
+                }
               ]
             }
           }
@@ -139,8 +329,16 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/market/assets/{{assetId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "market", "assets", "{{assetId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "market",
+                "assets",
+                "{{assetId}}"
+              ]
             }
           }
         },
@@ -151,9 +349,24 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/market/assets/{{assetId}}/candles?days=7",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "market", "assets", "{{assetId}}", "candles"],
-              "query": [{ "key": "days", "value": "7", "description": "obligatoire (int)" }]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "market",
+                "assets",
+                "{{assetId}}",
+                "candles"
+              ],
+              "query": [
+                {
+                  "key": "days",
+                  "value": "7",
+                  "description": "obligatoire (int)"
+                }
+              ]
             }
           }
         }
@@ -169,12 +382,24 @@
             "header": [],
             "auth": {
               "type": "bearer",
-              "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/portfolio",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "portfolio"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portfolio"
+              ]
             }
           }
         }
@@ -190,12 +415,24 @@
             "header": [],
             "auth": {
               "type": "bearer",
-              "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/orders",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "orders"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders"
+              ]
             }
           }
         },
@@ -203,10 +440,21 @@
           "name": "Buy order",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "auth": {
               "type": "bearer",
-              "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
             },
             "body": {
               "mode": "raw",
@@ -214,8 +462,15 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/orders/buy",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "orders", "buy"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders",
+                "buy"
+              ]
             }
           }
         },
@@ -223,10 +478,21 @@
           "name": "Sell order",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "auth": {
               "type": "bearer",
-              "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
             },
             "body": {
               "mode": "raw",
@@ -234,8 +500,15 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/orders/sell",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "orders", "sell"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "orders",
+                "sell"
+              ]
             }
           }
         }
