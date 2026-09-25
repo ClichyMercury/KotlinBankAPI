@@ -127,15 +127,25 @@ comme ça qu'on teste le flow en local.
 Le back construit le lien à partir de `PASSWORD_RESET_URL`, qui contient le placeholder
 `{token}`. Deux montages possibles :
 
-| Montage | `PASSWORD_RESET_URL` | Ce qui se passe au clic |
+**Montage actuel** : le lien pointe sur une page HTML servie par l'API elle-même,
+`https://<api>/reset-password?token=...`. Elle poste sur `/auth/reset-password` et affiche le
+résultat. Rien à faire côté mobile : l'utilisateur change son mot de passe dans le navigateur,
+puis revient se connecter dans l'app.
+
+**Ce qu'il ne faut pas faire** : mettre un schéma personnalisé (`finsim://reset?token=...`)
+dans l'email. Gmail et Outlook le dépouillent ou le rendent non cliquable, et un appareil sans
+l'app installée tombe sur un lien mort.
+
+**Plus tard, pour ouvrir l'app depuis le lien** : App Links (Android) et Universal Links (iOS).
+Ce sont des URL `https://` normales — le lien de l'email ne change pas — mais il faut :
+
+| Plateforme | Fichier à servir sur le domaine du lien | Côté app |
 |---|---|---|
-| Deep link | `finsim://reset?token={token}` | l'app s'ouvre sur l'écran « nouveau mot de passe » |
-| Page web | `https://finsim.app/reset-password?token={token}` | une page web appelle l'API, marche même sans l'app installée |
+| Android | `/.well-known/assetlinks.json` (HTTPS, sans redirection) | intent-filter avec `android:autoVerify="true"` |
+| iOS | `/.well-known/apple-app-site-association` (sans extension, `Content-Type: application/json`, sans redirection) | entitlement Associated Domains |
 
-En deep link pur, un utilisateur qui ouvre l'email depuis un appareil sans l'app tombe sur un
-lien mort — prévoir une page web de repli (universal link / App Link) si c'est un cas réel.
-
-Dans les deux cas, l'écran final envoie `token` + `newPassword` à `/auth/reset-password`.
+Les utilisateurs sans l'app continueront de voir la page web — c'est le comportement de repli
+natif des deux mécanismes.
 
 ### `POST /api/v1/auth/reset-password` → 200
 
