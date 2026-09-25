@@ -9,60 +9,121 @@ class AppConfigValidationTest {
 
     private val strongSecret = "x".repeat(48)
     private val jdbcUrl = "jdbc:postgresql://db.internal:5432/finsim"
+    private val resetUrl = "https://finsim.app/reset-password?token={token}"
+
+    private fun validateProduction(
+        jwtSecret: String = strongSecret,
+        dbPassword: String = "real-password",
+        dbUrl: String = jdbcUrl,
+        mailProvider: String = "resend",
+        resendApiKey: String = "re_live_key",
+        mailFrom: String = "FinSim <no-reply@finsim.app>",
+        resetUrlTemplate: String = resetUrl
+    ) = AppConfig.validate(
+        environment = "production",
+        jwtSecret = jwtSecret,
+        dbPassword = dbPassword,
+        dbUrl = dbUrl,
+        mailProvider = mailProvider,
+        resendApiKey = resendApiKey,
+        mailFrom = mailFrom,
+        resetUrlTemplate = resetUrlTemplate
+    )
 
     @Test
     fun `development boots with the dev defaults`() {
         assertDoesNotThrow {
-            AppConfig.validate("development", AppConfig.DEV_JWT_SECRET, AppConfig.DEV_DB_PASSWORD, jdbcUrl)
+            AppConfig.validate(
+                environment = "development",
+                jwtSecret = AppConfig.DEV_JWT_SECRET,
+                dbPassword = AppConfig.DEV_DB_PASSWORD,
+                dbUrl = jdbcUrl,
+                mailProvider = "log",
+                resendApiKey = "",
+                mailFrom = "FinSim <onboarding@resend.dev>",
+                resetUrlTemplate = resetUrl
+            )
         }
     }
 
     @Test
+    fun `production boots with a proper environment`() {
+        assertDoesNotThrow { validateProduction() }
+    }
+
+    @Test
     fun `production refuses the dev jwt secret`() {
-        val error = assertThrows<IllegalStateException> {
-            AppConfig.validate("production", AppConfig.DEV_JWT_SECRET, "real-password", jdbcUrl)
-        }
+        val error = assertThrows<IllegalStateException> { validateProduction(jwtSecret = AppConfig.DEV_JWT_SECRET) }
         assertTrue(error.message!!.contains("JWT_SECRET is unset"))
     }
 
     @Test
     fun `production refuses a short jwt secret`() {
-        val error = assertThrows<IllegalStateException> {
-            AppConfig.validate("production", "too-short", "real-password", jdbcUrl)
-        }
+        val error = assertThrows<IllegalStateException> { validateProduction(jwtSecret = "too-short") }
         assertTrue(error.message!!.contains("JWT_SECRET is too short"))
     }
 
     @Test
     fun `production refuses the dev database password`() {
-        val error = assertThrows<IllegalStateException> {
-            AppConfig.validate("production", strongSecret, AppConfig.DEV_DB_PASSWORD, jdbcUrl)
-        }
+        val error = assertThrows<IllegalStateException> { validateProduction(dbPassword = AppConfig.DEV_DB_PASSWORD) }
         assertTrue(error.message!!.contains("DATABASE_PASSWORD is unset"))
     }
 
     @Test
     fun `production refuses a non jdbc database url`() {
         val error = assertThrows<IllegalStateException> {
-            AppConfig.validate("production", strongSecret, "real-password", "postgres://user:pass@host/finsim")
+            validateProduction(dbUrl = "postgres://user:pass@host/finsim")
         }
         assertTrue(error.message!!.contains("must be a JDBC url"))
     }
 
     @Test
+    fun `production refuses the log mail provider`() {
+        val error = assertThrows<IllegalStateException> { validateProduction(mailProvider = "log") }
+        assertTrue(error.message!!.contains("password reset emails would never be delivered"))
+    }
+
+    @Test
+    fun `production refuses an unknown mail provider`() {
+        val error = assertThrows<IllegalStateException> { validateProduction(mailProvider = "sendgrid") }
+        assertTrue(error.message!!.contains("MAIL_PROVIDER must be"))
+    }
+
+    @Test
+    fun `production refuses resend without an api key`() {
+        val error = assertThrows<IllegalStateException> { validateProduction(resendApiKey = "") }
+        assertTrue(error.message!!.contains("RESEND_API_KEY is required"))
+    }
+
+    @Test
+    fun `production refuses the resend sandbox sender`() {
+        val error = assertThrows<IllegalStateException> {
+            validateProduction(mailFrom = "FinSim <onboarding@resend.dev>")
+        }
+        assertTrue(error.message!!.contains("sandbox domain"))
+    }
+
+    @Test
+    fun `production refuses a reset url without the token placeholder`() {
+        val error = assertThrows<IllegalStateException> {
+            validateProduction(resetUrlTemplate = "https://finsim.app/reset-password")
+        }
+        assertTrue(error.message!!.contains("{token} placeholder"))
+    }
+
+    @Test
     fun `production reports every problem at once`() {
         val error = assertThrows<IllegalStateException> {
-            AppConfig.validate("production", AppConfig.DEV_JWT_SECRET, AppConfig.DEV_DB_PASSWORD, "postgres://host/db")
+            validateProduction(
+                jwtSecret = AppConfig.DEV_JWT_SECRET,
+                dbPassword = AppConfig.DEV_DB_PASSWORD,
+                dbUrl = "postgres://host/db",
+                mailProvider = "log"
+            )
         }
         assertTrue(error.message!!.contains("JWT_SECRET"))
         assertTrue(error.message!!.contains("DATABASE_PASSWORD"))
         assertTrue(error.message!!.contains("DATABASE_URL"))
-    }
-
-    @Test
-    fun `production boots with a proper environment`() {
-        assertDoesNotThrow {
-            AppConfig.validate("production", strongSecret, "real-password", jdbcUrl)
-        }
+        assertTrue(error.message!!.contains("MAIL_PROVIDER"))
     }
 }

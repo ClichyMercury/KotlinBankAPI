@@ -13,6 +13,7 @@ import com.kotlinbank.plugins.configureRateLimit
 import com.kotlinbank.plugins.configureRouting
 import com.kotlinbank.plugins.configureSerialization
 import com.kotlinbank.plugins.configureStatusPages
+import com.kotlinbank.services.mail.MailService
 import com.kotlinbank.services.market.CoinGeckoClient
 import com.kotlinbank.services.market.PriceRefreshJob
 import io.ktor.server.application.*
@@ -44,9 +45,10 @@ fun main() {
     PriceRefreshJob.start()
 
     Runtime.getRuntime().addShutdownHook(Thread {
-        log.info("Shutdown: stopping job, closing DB + Redis + HTTP client")
+        log.info("Shutdown: stopping job, closing DB + Redis + HTTP clients")
         PriceRefreshJob.stop()
         CoinGeckoClient.close()
+        MailService.close()
         RedisFactory.close()
         DatabaseFactory.close()
     })
