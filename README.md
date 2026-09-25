@@ -101,6 +101,9 @@ Architecture **layered** simple : `routes/` → `services/` → `db/repositories
 - ✅ **Reset password** — `POST /auth/forgot-password` / `/auth/reset-password` : token opaque hashé,
   usage unique, TTL 30 min, réponse générique (pas d'énumération d'emails), révoque toutes les
   sessions après changement.
+- ✅ **Sentry** — exceptions non gérées (avec méthode, chemin **sans query string**, `user.id` si
+  authentifié), échecs d'envoi Resend, et alerte après 3 échecs consécutifs du refresh CoinGecko.
+  Sans `SENTRY_DSN`, tout est no-op.
 - ✅ **Page de reset servie par l'API** — `GET /reset-password?token=…`, HTML autonome, cible de
   `PASSWORD_RESET_URL` en attendant le front web.
 - ✅ **Emails via Resend** — `ResendMailSender` (template FR HTML + texte) ; `MAIL_PROVIDER=log`
@@ -164,6 +167,9 @@ RESEND_API_KEY=                      # re_... si MAIL_PROVIDER=resend
 MAIL_FROM=FinSim <no-reply@tondomaine.com>
 PASSWORD_RESET_URL=https://api.tondomaine.com/reset-password?token={token}
 CORS_ALLOWED_HOSTS=                  # prod : hosts web autorisés, séparés par des virgules
+SENTRY_DSN=                          # vide = reporting désactivé (warning au boot en prod)
+SENTRY_RELEASE=                      # optionnel, ex. le SHA du commit déployé
+SENTRY_TRACES_SAMPLE_RATE=0.0        # 0.0 = pas de tracing, seulement les erreurs
 COINGECKO_API_KEY=                   # optionnel
 ```
 
@@ -231,6 +237,7 @@ RESEND_API_KEY=re_...
 MAIL_FROM=FinSim <no-reply@tondomaine.com>
 PASSWORD_RESET_URL=https://api.tondomaine.com/reset-password?token={token}
 CORS_ALLOWED_HOSTS=                  # vide tant qu'il n'y a pas de front web
+SENTRY_DSN=https://...@....ingest.sentry.io/...
 ```
 
 L'API **refuse de démarrer** si l'une de ces valeurs est absente ou incohérente, et liste tous
@@ -243,6 +250,24 @@ les appels CoinGecko et déclenchent des 429.
 ⚠️ **`DATABASE_URL` doit être une URL JDBC.** Les PaaS fournissent en général
 `postgres://user:pass@host/db` — à convertir en `jdbc:postgresql://host:5432/db` avec
 `DATABASE_USER` / `DATABASE_PASSWORD` séparés.
+
+### Monitoring (Sentry)
+
+`SENTRY_DSN` vide = tout est no-op, rien n'est envoyé. En production, l'absence de DSN produit
+un warning au boot mais ne bloque pas le démarrage — contrairement aux erreurs de config
+sensibles, une panne d'observabilité ne justifie pas de refuser de servir.
+
+Ce qui remonte :
+
+| Événement | Niveau | Pourquoi |
+|---|---|---|
+| Exception non gérée (`StatusPages`) | error | méthode, chemin, `user.id` si authentifié |
+| Échec d'envoi Resend | error | l'utilisateur ne reçoit rien et la réponse HTTP reste générique — sans ça, invisible |
+| 3 échecs consécutifs du refresh CoinGecko | error | les prix deviennent stale sans que rien ne le signale |
+
+⚠️ **Le chemin est envoyé sans query string.** L'URL `/reset-password?token=...` porte un token
+de réinitialisation : `SentryReporter.scrubUrl()` le retire avant tout envoi, et un test le
+vérifie. Même raison pour `isSendDefaultPii = false`.
 
 ### Note ports (macOS)
 
@@ -355,7 +380,7 @@ Migrations dans `src/main/resources/db/migration/`.
 | 8 | **Pas de gestion d'erreur CoinGecko persistante** | Si l'API CoinGecko tombe 30 min, `last_price` devient stale mais l'API continue à servir l'ancien prix sans warning. Ajouter un seuil "stale price" qui rejette les BUY. | Moyenne |
 | 9 | **Pas de versioning de breaking changes** | Le `/v1` est en place mais on n'a pas de mécanique pour faire vivre `/v2`. À designer quand on aura besoin. | Faible |
 | 10 | **Logs en plain text** | `logback.xml` fait du `🏦 HH:mm:ss [thread] LEVEL ...` lisible mais pas indexable. À passer en JSON quand on aura un agrégateur (Loki, Datadog…). | Faible |
-| 11 | **Pas de monitoring** | Aucun endpoint `/metrics`, pas de Sentry/Bugsnag pour les erreurs. À ajouter avant la prod. | Haute (pour prod) |
+| ~~11~~ | ~~**Pas de monitoring**~~ | ✅ Partiellement : Sentry capture les exceptions non gérées, les échecs d'envoi Resend et les pannes prolongées de CoinGecko. Reste à faire : endpoint `/metrics` (Prometheus). | ~~Haute~~ → Faible |
 | 12 | **Secret JWT en env var simple** | Suffit en dev/Railway, mais à passer dans un secret manager dédié quand on grossit. | Moyenne |
 | 13 | **Purge des refresh + reset tokens au boot uniquement** | Les tokens expirés sont supprimés au démarrage de l'API. Sur une instance qui tourne des mois, la table grossit entre deux redémarrages. À passer en job périodique si le volume devient visible. | Faible |
 | ~~14~~ | ~~**Aucun provider mail branché**~~ | ✅ Fait : `ResendMailSender` (API HTTP Resend, template FR HTML + texte). `MAIL_PROVIDER=log` reste le défaut en dev. La prod refuse de démarrer si le provider n'est pas `resend`, si la clé manque, ou si `MAIL_FROM` utilise encore le domaine bac à sable `resend.dev`. | ~~Haute~~ |
@@ -441,6 +466,8 @@ src/main/kotlin/com/kotlinbank/
 │   ├── PortfolioService.kt
 │   ├── OrderService.kt
 │   ├── Exceptions.kt
+│   ├── monitoring/
+│   │   └── SentryReporter.kt   init + captures, no-op sans DSN
 │   ├── mail/
 │   │   ├── MailSender.kt       interface + LogMailSender (dev)
 │   │   └── ResendMailSender.kt API Resend (prod)

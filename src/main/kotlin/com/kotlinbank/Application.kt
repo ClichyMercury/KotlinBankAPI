@@ -14,6 +14,7 @@ import com.kotlinbank.plugins.configureRouting
 import com.kotlinbank.plugins.configureSerialization
 import com.kotlinbank.plugins.configureStatusPages
 import com.kotlinbank.services.mail.MailService
+import com.kotlinbank.services.monitoring.SentryReporter
 import com.kotlinbank.services.market.CoinGeckoClient
 import com.kotlinbank.services.market.PriceRefreshJob
 import io.ktor.server.application.*
@@ -33,6 +34,7 @@ fun main() {
         exitProcess(1)
     }
 
+    SentryReporter.init()
     DatabaseFactory.init()
     RedisFactory.init()
     runBlocking {
@@ -51,6 +53,7 @@ fun main() {
         MailService.close()
         RedisFactory.close()
         DatabaseFactory.close()
+        SentryReporter.close()
     })
 
     embeddedServer(

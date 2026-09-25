@@ -8,6 +8,7 @@ val flyway_version = "9.22.3"
 val lettuce_version = "6.3.0.RELEASE"
 val bcrypt_version = "0.10.2"
 val jwt_version = "4.4.0"
+val sentry_version = "8.58.0"
 
 plugins {
     kotlin("jvm") version "1.9.0"
@@ -67,6 +68,9 @@ dependencies {
 
     // Logging
     implementation("ch.qos.logback:logback-classic:$logback_version")
+
+    // Monitoring
+    implementation("io.sentry:sentry:$sentry_version")
 
     // Tests
     testImplementation("io.ktor:ktor-server-tests-jvm:$ktor_version")
