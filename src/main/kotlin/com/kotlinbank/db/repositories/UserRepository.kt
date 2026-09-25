@@ -7,6 +7,7 @@ import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
+import org.jetbrains.exposed.sql.update
 import java.util.UUID
 
 object UserRepository {
@@ -33,6 +34,13 @@ object UserRepository {
                 it[UsersTable.passwordHash] = passwordHash
             }
             UsersTable.select { UsersTable.id eq id }.single().toUser()
+        }
+
+    suspend fun updatePasswordHash(id: UUID, passwordHash: String): Boolean =
+        newSuspendedTransaction(Dispatchers.IO) {
+            UsersTable.update({ UsersTable.id eq id }) {
+                it[UsersTable.passwordHash] = passwordHash
+            } > 0
         }
 
     private fun ResultRow.toUser(): User = User(

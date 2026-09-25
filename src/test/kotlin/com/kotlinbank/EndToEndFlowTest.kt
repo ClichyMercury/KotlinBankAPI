@@ -10,12 +10,17 @@ import com.kotlinbank.models.dto.AuthResponse
 import com.kotlinbank.models.dto.BuyOrderRequest
 import com.kotlinbank.models.dto.SellOrderRequest
 import com.kotlinbank.models.dto.ErrorResponse
+import com.kotlinbank.models.dto.ForgotPasswordRequest
+import com.kotlinbank.models.dto.MessageResponse
 import com.kotlinbank.models.dto.LoginRequest
 import com.kotlinbank.models.dto.OrderResponse
 import com.kotlinbank.models.dto.PortfolioResponse
 import com.kotlinbank.models.dto.RefreshRequest
 import com.kotlinbank.models.dto.RegisterRequest
+import com.kotlinbank.models.dto.ResetPasswordRequest
 import com.kotlinbank.models.dto.TokenResponse
+import com.kotlinbank.services.mail.MailSender
+import com.kotlinbank.services.mail.MailService
 import com.kotlinbank.models.dto.UserResponse
 import io.ktor.client.call.*
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
@@ -259,5 +264,88 @@ class EndToEndFlowTest {
             setBody(RefreshRequest(relogin.refreshToken))
         }
         assertEquals(HttpStatusCode.Unauthorized, afterLogout.status, "logout revokes the refresh token")
+    }
+
+    @Test
+    fun `forgot and reset password revokes sessions`() = testApplication {
+        application { module() }
+        val http = createClient {
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+
+        val captured = mutableMapOf<String, String>()
+        MailService.delegate = object : MailSender {
+            override suspend fun sendPasswordReset(email: String, token: String) {
+                captured[email] = token
+            }
+        }
+
+        val stamp = System.currentTimeMillis()
+        val email = "reset-$stamp@test.io"
+        val pseudo = "reset_$stamp"
+
+        val registered = http.post("/api/v1/auth/register") {
+            contentType(ContentType.Application.Json)
+            setBody(RegisterRequest(email, pseudo, "password123"))
+        }.body<AuthResponse>()
+
+        val unknown = http.post("/api/v1/auth/forgot-password") {
+            contentType(ContentType.Application.Json)
+            setBody(ForgotPasswordRequest("nobody-$stamp@test.io"))
+        }
+        assertEquals(HttpStatusCode.OK, unknown.status, "unknown email must not leak")
+        assertTrue(captured.isEmpty(), "no mail sent for an unknown email")
+
+        val forgot = http.post("/api/v1/auth/forgot-password") {
+            contentType(ContentType.Application.Json)
+            setBody(ForgotPasswordRequest(email))
+        }
+        assertEquals(HttpStatusCode.OK, forgot.status)
+        assertEquals(
+            unknown.body<MessageResponse>().message,
+            forgot.body<MessageResponse>().message,
+            "same message either way, no user enumeration"
+        )
+        val resetToken = captured[email] ?: error("no reset token captured")
+
+        val tooShort = http.post("/api/v1/auth/reset-password") {
+            contentType(ContentType.Application.Json)
+            setBody(ResetPasswordRequest(resetToken, "short"))
+        }
+        assertEquals(HttpStatusCode.BadRequest, tooShort.status)
+
+        val reset = http.post("/api/v1/auth/reset-password") {
+            contentType(ContentType.Application.Json)
+            setBody(ResetPasswordRequest(resetToken, "newpassword456"))
+        }
+        assertEquals(HttpStatusCode.OK, reset.status, "a rejected weak password must not burn the token")
+
+        val replay = http.post("/api/v1/auth/reset-password") {
+            contentType(ContentType.Application.Json)
+            setBody(ResetPasswordRequest(resetToken, "anotherpassword789"))
+        }
+        assertEquals(HttpStatusCode.Unauthorized, replay.status, "reset token is single use")
+
+        val oldPassword = http.post("/api/v1/auth/login") {
+            contentType(ContentType.Application.Json)
+            setBody(LoginRequest(email, "password123"))
+        }
+        assertEquals(HttpStatusCode.Unauthorized, oldPassword.status)
+
+        val newPassword = http.post("/api/v1/auth/login") {
+            contentType(ContentType.Application.Json)
+            setBody(LoginRequest(email, "newpassword456"))
+        }
+        assertEquals(HttpStatusCode.OK, newPassword.status)
+
+        val staleRefresh = http.post("/api/v1/auth/refresh") {
+            contentType(ContentType.Application.Json)
+            setBody(RefreshRequest(registered.refreshToken))
+        }
+        assertEquals(
+            HttpStatusCode.Unauthorized,
+            staleRefresh.status,
+            "sessions opened before the reset are revoked"
+        )
     }
 }

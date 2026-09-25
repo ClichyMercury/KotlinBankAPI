@@ -4,6 +4,7 @@ import com.kotlinbank.db.tables.RefreshTokensTable
 import com.kotlinbank.models.RefreshToken
 import kotlinx.coroutines.Dispatchers
 import org.jetbrains.exposed.sql.ResultRow
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.deleteWhere
@@ -51,6 +52,14 @@ object RefreshTokenRepository {
                 it[revokedAt] = now
             }
         }
+
+    suspend fun deleteByHash(tokenHash: String): Int = newSuspendedTransaction(Dispatchers.IO) {
+        RefreshTokensTable.deleteWhere { RefreshTokensTable.tokenHash.eq(tokenHash) }
+    }
+
+    suspend fun deleteAllForUser(userId: UUID): Int = newSuspendedTransaction(Dispatchers.IO) {
+        RefreshTokensTable.deleteWhere { RefreshTokensTable.userId.eq(userId) }
+    }
 
     suspend fun deleteExpired(before: Instant = Instant.now()): Int =
         newSuspendedTransaction(Dispatchers.IO) {

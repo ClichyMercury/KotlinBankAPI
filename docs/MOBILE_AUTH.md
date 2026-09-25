@@ -1,7 +1,7 @@
 # Intégration mobile — Auth & sessions (refresh token)
 
 Guide d'intégration côté app mobile pour l'authentification FinSim : obtention de la paire
-de tokens, renouvellement silencieux, déconnexion.
+de tokens, renouvellement silencieux, déconnexion, mot de passe oublié.
 
 Pour les ordres BUY/SELL → **[MOBILE_ORDERS.md](MOBILE_ORDERS.md)**.
 
@@ -37,7 +37,7 @@ l'écran de login.
 
 ---
 
-## 2. Endpoints
+## 2. Endpoints de session
 
 ### `POST /api/v1/auth/register` → 201
 
@@ -101,7 +101,49 @@ l'utilisateur (tous ses appareils). Réponse `{ "message": "All sessions revoked
 
 ---
 
-## 3. Erreurs
+## 3. Mot de passe oublié
+
+### `POST /api/v1/auth/forgot-password` → 200
+
+```json
+{ "email": "toi@test.io" }
+```
+
+Réponse **toujours** identique, que l'email existe ou non (pas d'énumération de comptes) :
+
+```json
+{ "message": "If that email is registered, a reset link has been sent" }
+```
+
+Le token de reset est opaque, à **usage unique**, valable **30 min**
+(`PASSWORD_RESET_EXPIRATION_MINUTES`). Demander un nouveau lien invalide le précédent.
+
+> ⚠️ **Aucun provider mail n'est branché pour l'instant.** En dev, le token est écrit dans les
+> logs de l'API (`Password reset token for <email>: <token>`). En prod, il n'est pas délivré :
+> l'écran « mot de passe oublié » ne sera réellement utilisable qu'une fois un provider
+> implémenté côté back.
+
+### `POST /api/v1/auth/reset-password` → 200
+
+```json
+{ "token": "<token reçu par email>", "newPassword": "nouveaupass456" }
+```
+
+Réponse : `{ "message": "Password updated, all sessions revoked" }`.
+
+Après un reset réussi :
+
+- le mot de passe est remplacé,
+- le token de reset est consommé (un rejeu renvoie 401),
+- **toutes les sessions sont révoquées** — l'app doit purger ses tokens et faire relogger
+  l'utilisateur avec son nouveau mot de passe.
+
+Un `newPassword` trop court (< 8 caractères) renvoie 400 **sans** consommer le token :
+l'utilisateur peut réessayer avec le même lien.
+
+---
+
+## 4. Erreurs
 
 | HTTP | `error` | `message` | Que faire côté app |
 |---|---|---|---|
@@ -110,11 +152,24 @@ l'utilisateur (tous ses appareils). Réponse `{ "message": "All sessions revoked
 | 401 | `unauthorized` | `Refresh token expired` | purger les tokens → écran login |
 | 401 | `unauthorized` | `Refresh token reuse detected, all sessions revoked` | purger les tokens → écran login + prévenir l'utilisateur |
 | 401 | `unauthorized` | `Account disabled` | compte désactivé, login impossible |
+| 400 | `validation_error` | `Password must be at least 8 characters` | reset : le token reste valide, l'utilisateur réessaie |
+| 401 | `unauthorized` | `Invalid or expired reset token` | lien de reset périmé, déjà utilisé, ou remplacé par une demande plus récente |
 | 429 | — | — | rate limit auth : 10 req/min/IP (register + login + refresh + logout partagent le compteur) |
 
 ---
 
-## 4. Flow recommandé (intercepteur HTTP)
+### Distinguer les deux messages 401 sur `/auth/refresh`
+
+| Message | Cause | Ce que voit l'utilisateur |
+|---|---|---|
+| `Invalid refresh token` | session fermée normalement : logout, logout-all, ou reset password | reconnexion simple, rien d'alarmant |
+| `Refresh token reuse detected, all sessions revoked` | un token **déjà consommé par la rotation** a été rejoué | reconnexion + message de sécurité justifié |
+
+N'affiche l'avertissement de sécurité que sur le second.
+
+---
+
+## 5. Flow recommandé (intercepteur HTTP)
 
 ```
 1. Requête 🔒 avec l'access token courant
@@ -147,7 +202,7 @@ session de 30 jours.
 
 ---
 
-## 5. Tester rapidement
+## 6. Tester rapidement
 
 ```bash
 # 1. Login -> récupérer les deux tokens

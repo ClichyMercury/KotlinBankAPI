@@ -4,6 +4,7 @@ import com.kotlinbank.config.AppConfig
 import com.kotlinbank.config.DatabaseFactory
 import com.kotlinbank.config.RedisFactory
 import com.kotlinbank.db.AssetSeeder
+import com.kotlinbank.db.repositories.PasswordResetTokenRepository
 import com.kotlinbank.db.repositories.RefreshTokenRepository
 import com.kotlinbank.plugins.configureAuth
 import com.kotlinbank.plugins.configureCORS
@@ -19,11 +20,17 @@ import io.ktor.server.engine.*
 import io.ktor.server.netty.*
 import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
+import kotlin.system.exitProcess
 
 private val log = LoggerFactory.getLogger("Application")
 
 fun main() {
     log.info("Starting FinSim API on port ${AppConfig.port} (env=${AppConfig.environment})")
+
+    runCatching { AppConfig.validate() }.onFailure {
+        log.error(it.message)
+        exitProcess(1)
+    }
 
     DatabaseFactory.init()
     RedisFactory.init()
@@ -31,6 +38,8 @@ fun main() {
         AssetSeeder.seedIfEmpty()
         val purged = RefreshTokenRepository.deleteExpired()
         if (purged > 0) log.info("Purged $purged expired refresh tokens")
+        val purgedResets = PasswordResetTokenRepository.deleteExpired()
+        if (purgedResets > 0) log.info("Purged $purgedResets expired password reset tokens")
     }
     PriceRefreshJob.start()
 
