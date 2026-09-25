@@ -22,6 +22,7 @@ object AppConfig {
         val audience: String = env("JWT_AUDIENCE", "finsim-clients")
         val realm: String = env("JWT_REALM", "finsim")
         val expirationMinutes: Long = env("JWT_EXPIRATION_MINUTES", "60").toLong()
+        val refreshExpirationDays: Long = env("JWT_REFRESH_EXPIRATION_DAYS", "30").toLong()
     }
 
     object Market {

@@ -13,7 +13,9 @@ import com.kotlinbank.models.dto.ErrorResponse
 import com.kotlinbank.models.dto.LoginRequest
 import com.kotlinbank.models.dto.OrderResponse
 import com.kotlinbank.models.dto.PortfolioResponse
+import com.kotlinbank.models.dto.RefreshRequest
 import com.kotlinbank.models.dto.RegisterRequest
+import com.kotlinbank.models.dto.TokenResponse
 import com.kotlinbank.models.dto.UserResponse
 import io.ktor.client.call.*
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
@@ -25,6 +27,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeAll
@@ -192,5 +195,69 @@ class EndToEndFlowTest {
 
         val noToken = http.get("/api/v1/portfolio")
         assertEquals(HttpStatusCode.Unauthorized, noToken.status)
+    }
+
+
+    @Test
+    fun `refresh token rotation reuse detection and logout`() = testApplication {
+        application { module() }
+        val http = createClient {
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+
+        val stamp = System.currentTimeMillis()
+        val email = "refresh-$stamp@test.io"
+        val pseudo = "refresh_$stamp"
+
+        val regBody = http.post("/api/v1/auth/register") {
+            contentType(ContentType.Application.Json)
+            setBody(RegisterRequest(email, pseudo, "password123"))
+        }.body<AuthResponse>()
+        assertTrue(regBody.refreshToken.isNotBlank(), "register returns a refresh token")
+        assertTrue(regBody.refreshExpiresInSeconds > regBody.expiresInSeconds, "refresh outlives access")
+
+        val rotatedResp = http.post("/api/v1/auth/refresh") {
+            contentType(ContentType.Application.Json)
+            setBody(RefreshRequest(regBody.refreshToken))
+        }
+        assertEquals(HttpStatusCode.OK, rotatedResp.status)
+        val rotated = rotatedResp.body<TokenResponse>()
+        assertNotEquals(regBody.refreshToken, rotated.refreshToken, "refresh token is rotated")
+
+        val meWithRotated = http.get("/api/v1/auth/me") {
+            header("Authorization", "Bearer ${rotated.accessToken}")
+        }
+        assertEquals(HttpStatusCode.OK, meWithRotated.status)
+        assertEquals(email, meWithRotated.body<UserResponse>().email)
+
+        val reuse = http.post("/api/v1/auth/refresh") {
+            contentType(ContentType.Application.Json)
+            setBody(RefreshRequest(regBody.refreshToken))
+        }
+        assertEquals(HttpStatusCode.Unauthorized, reuse.status, "consumed token cannot be replayed")
+        assertTrue(reuse.body<ErrorResponse>().message.contains("reuse detected"))
+
+        val afterReuse = http.post("/api/v1/auth/refresh") {
+            contentType(ContentType.Application.Json)
+            setBody(RefreshRequest(rotated.refreshToken))
+        }
+        assertEquals(HttpStatusCode.Unauthorized, afterReuse.status, "reuse revokes every live session")
+
+        val relogin = http.post("/api/v1/auth/login") {
+            contentType(ContentType.Application.Json)
+            setBody(LoginRequest(email, "password123"))
+        }.body<AuthResponse>()
+
+        val logout = http.post("/api/v1/auth/logout") {
+            contentType(ContentType.Application.Json)
+            setBody(RefreshRequest(relogin.refreshToken))
+        }
+        assertEquals(HttpStatusCode.OK, logout.status)
+
+        val afterLogout = http.post("/api/v1/auth/refresh") {
+            contentType(ContentType.Application.Json)
+            setBody(RefreshRequest(relogin.refreshToken))
+        }
+        assertEquals(HttpStatusCode.Unauthorized, afterLogout.status, "logout revokes the refresh token")
     }
 }

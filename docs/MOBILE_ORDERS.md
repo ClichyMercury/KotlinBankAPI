@@ -11,6 +11,7 @@ Guide d'intégration côté app mobile pour passer des ordres d'achat et de vent
 - **Préfixe** : tous les endpoints métier sont sous `/api/v1`
 - **Auth** : les routes orders/portfolio exigent l'en-tête
   `Authorization: Bearer <accessToken>` (token obtenu via `/auth/login` ou `/auth/register`).
+  Il expire au bout d'1h : gestion du renouvellement dans **[MOBILE_AUTH.md](MOBILE_AUTH.md)**.
 - **Content-Type** : `application/json` sur tout POST avec body.
 
 ### ⚠️ Les nombres sont des **strings** JSON

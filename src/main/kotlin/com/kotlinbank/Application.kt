@@ -4,6 +4,7 @@ import com.kotlinbank.config.AppConfig
 import com.kotlinbank.config.DatabaseFactory
 import com.kotlinbank.config.RedisFactory
 import com.kotlinbank.db.AssetSeeder
+import com.kotlinbank.db.repositories.RefreshTokenRepository
 import com.kotlinbank.plugins.configureAuth
 import com.kotlinbank.plugins.configureCORS
 import com.kotlinbank.plugins.configureCallLogging
@@ -26,7 +27,11 @@ fun main() {
 
     DatabaseFactory.init()
     RedisFactory.init()
-    runBlocking { AssetSeeder.seedIfEmpty() }
+    runBlocking {
+        AssetSeeder.seedIfEmpty()
+        val purged = RefreshTokenRepository.deleteExpired()
+        if (purged > 0) log.info("Purged $purged expired refresh tokens")
+    }
     PriceRefreshJob.start()
 
     Runtime.getRuntime().addShutdownHook(Thread {
