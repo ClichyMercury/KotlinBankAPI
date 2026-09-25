@@ -6,6 +6,7 @@ import com.kotlinbank.routes.authRoutes
 import com.kotlinbank.routes.marketRoutes
 import com.kotlinbank.routes.orderRoutes
 import com.kotlinbank.routes.portfolioRoutes
+import com.kotlinbank.routes.webRoutes
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.response.*
@@ -19,6 +20,7 @@ fun Application.configureRouting() {
                 """
                 FinSim API — slice J1 OK
                 GET /health — liveness check (DB + Redis)
+                GET /reset-password?token=... — page de réinitialisation
                 """.trimIndent()
             )
         }
@@ -42,5 +44,6 @@ fun Application.configureRouting() {
         marketRoutes()
         portfolioRoutes()
         orderRoutes()
+        webRoutes()
     }
 }

@@ -101,6 +101,8 @@ Architecture **layered** simple : `routes/` → `services/` → `db/repositories
 - ✅ **Reset password** — `POST /auth/forgot-password` / `/auth/reset-password` : token opaque hashé,
   usage unique, TTL 30 min, réponse générique (pas d'énumération d'emails), révoque toutes les
   sessions après changement.
+- ✅ **Page de reset servie par l'API** — `GET /reset-password?token=…`, HTML autonome, cible de
+  `PASSWORD_RESET_URL` en attendant le front web.
 - ✅ **Emails via Resend** — `ResendMailSender` (template FR HTML + texte) ; `MAIL_PROVIDER=log`
   en dev écrit le token dans les logs. Setup DNS/clé : [Configurer Resend](#configurer-resend-emails-de-reset-password).
 - ✅ **Refresh token** — `POST /auth/refresh` / `/auth/logout` / `/auth/logout-all` : tokens opaques
@@ -160,7 +162,7 @@ PASSWORD_RESET_EXPIRATION_MINUTES=30
 MAIL_PROVIDER=log                    # log (dev) | resend (obligatoire en prod)
 RESEND_API_KEY=                      # re_... si MAIL_PROVIDER=resend
 MAIL_FROM=FinSim <no-reply@tondomaine.com>
-PASSWORD_RESET_URL=https://finsim.app/reset-password?token={token}
+PASSWORD_RESET_URL=https://api.tondomaine.com/reset-password?token={token}
 CORS_ALLOWED_HOSTS=                  # prod : hosts web autorisés, séparés par des virgules
 COINGECKO_API_KEY=                   # optionnel
 ```
@@ -188,12 +190,21 @@ Nécessaire uniquement pour la prod — en dev, `MAIL_PROVIDER=log` écrit le to
 MAIL_PROVIDER=resend
 RESEND_API_KEY=re_...
 MAIL_FROM=FinSim <no-reply@finsim.app>      # doit être sur le domaine vérifié
-PASSWORD_RESET_URL=https://finsim.app/reset-password?token={token}
+PASSWORD_RESET_URL=https://api.tondomaine.com/reset-password?token={token}
 ```
 
-`PASSWORD_RESET_URL` est le lien cliqué dans l'email : soit une page web qui appelle
-`POST /auth/reset-password`, soit un deep link mobile (`finsim://reset?token={token}`).
-Le placeholder `{token}` est obligatoire.
+`PASSWORD_RESET_URL` est le lien cliqué dans l'email. Tant qu'il n'y a pas de front web,
+pointez-le sur la page servie par l'API elle-même :
+`https://api.tondomaine.com/reset-password?token={token}`. Le placeholder `{token}` est
+obligatoire.
+
+> Éviter un deep link à schéma personnalisé (`finsim://…`) dans un email : Gmail et Outlook
+> le dépouillent ou le rendent non cliquable. Pour ouvrir l'app depuis le lien, il faudra
+> passer par des **App Links** (Android) / **Universal Links** (iOS), qui restent des URL
+> `https://` et demandent de servir `/.well-known/assetlinks.json` et
+> `/.well-known/apple-app-site-association` sur le domaine du lien, sans redirection.
+> Le jour venu, ces fichiers se posent sur le domaine de l'API et `PASSWORD_RESET_URL` ne
+> change pas.
 
 > Tant que le domaine n'est pas vérifié, Resend n'accepte que l'expéditeur bac à sable
 > `onboarding@resend.dev`, qui ne délivre qu'à l'adresse du compte Resend. La validation de
@@ -218,7 +229,7 @@ REDIS_URL=redis://<host>:6379
 MAIL_PROVIDER=resend
 RESEND_API_KEY=re_...
 MAIL_FROM=FinSim <no-reply@tondomaine.com>
-PASSWORD_RESET_URL=https://tondomaine.com/reset-password?token={token}
+PASSWORD_RESET_URL=https://api.tondomaine.com/reset-password?token={token}
 CORS_ALLOWED_HOSTS=                  # vide tant qu'il n'y a pas de front web
 ```
 
@@ -278,6 +289,16 @@ POST /api/v1/orders/buy        🔒  { assetId, quantity }
 POST /api/v1/orders/sell       🔒  { assetId, quantity }   -> renvoie realizedPnl
 GET  /api/v1/orders            🔒
 ```
+
+### Pages web servies par l'API
+```
+GET  /reset-password?token=...   page de saisie du nouveau mot de passe
+```
+
+Page HTML autonome (aucune dépendance, aucun build front) servie depuis
+`src/main/resources/web/`. C'est la cible de `PASSWORD_RESET_URL` tant qu'il n'y a pas de
+front web : le lien de l'email fonctionne sur tous les appareils, avec ou sans l'app installée.
+Le token n'est jamais injecté côté serveur — la page le lit dans `location.search`.
 
 ### Système
 ```
@@ -407,6 +428,7 @@ src/main/kotlin/com/kotlinbank/
 │   └── StatusPages.kt          mapping exceptions → JSON
 ├── routes/
 │   ├── AuthRoutes.kt
+│   ├── WebRoutes.kt            page /reset-password
 │   ├── MarketRoutes.kt
 │   ├── PortfolioRoutes.kt
 │   └── OrderRoutes.kt
